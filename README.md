@@ -6,7 +6,7 @@
 ![license](https://img.shields.io/badge/license-MIT-16A34A?style=flat-square)
 ![rules](https://img.shields.io/badge/rules-5500%20IPv4%20%2B%202019%20IPv6-7C3AED?style=flat-square)
 
-<p align="center"><img src="cat-run.svg" width="120" height="120" alt="智路猫"></p>
+<p align="center"><img src="cat-lounge.svg" width="120" height="100" alt="智路猫"></p>
 
 ## 它能做什么
 
@@ -16,7 +16,7 @@
 - **本地代理内核检测**：打开面板即扫描 12 个常见代理端口，识别 Clash Verge / Mihomo / v2rayN / sing-box 等内核并自动填入端口；没装内核时明确提示并给出官网安装入口，避免「配了代理却没内核」的假象。
 - **fail-open**：代理端口不通时自动临时直连，不会断网；恢复后自动切回。
 - **自定义规则**：域名级强制直连 / 强制代理，支持后缀匹配。
-- **浅色卡片式 UI**：单一健康状态卡 + 会跑跳的品牌吉祥物「智路猫」，状态互斥、不打架，尊重系统「减少动态效果」设置。
+- **浅色卡片式 UI**：单一健康状态卡 + 趴在卡片边线上的品牌吉祥物「智路猫」（慢摇尾巴、眨眼、呼吸），状态互斥、不打架，尊重系统「减少动态效果」设置。
 
 ## 分流判据（PAC，优先级从上到下）
 
@@ -47,7 +47,7 @@
 
 | 区域 | 说明 |
 |---|---|
-| 健康卡 | 单一状态裁决：正常 / 提醒 / 需处理 / 已暂停；含总开关与跑跳智路猫 |
+| 健康卡 | 单一状态裁决：正常 / 提醒 / 需处理 / 已暂停；含总开关与趴边智路猫 |
 | 代理内核 | 自动识别本机内核与端口；未安装时给出官网安装入口，可重扫 |
 | 网络出口 | 代理出口 vs 本机真实 IP、地区；可刷新 |
 | 分流模式 | 智能分流 / 全部直连 / 全部代理 |
@@ -89,7 +89,7 @@ python tools/make_icons.py    # 由 MIAO 品牌 SVG 生成 16/32/48/128 图标 +
 
 测试桩严格模拟 Chrome bindings：拒绝 `scope` 属性、要求 details + callback、校验 PAC 纯 ASCII、验证代理写入成功后清空历史错误，并覆盖出口双通道探测与本地内核识别。
 
-图标与吉祥物「智路猫」基于 MIAO 品牌素材（深蓝描边 + 蓝耳 + wink 眼 + 粉腮红）制作：`cat-run.svg` 是补全身躯干与四爪骨架的跑跳循环动画，`tools/make_icons.py` 纯 Python 标准库把品牌 SVG 光栅化成各尺寸 PNG（无需 Pillow / cairosvg）。
+图标与吉祥物「智路猫」基于 MIAO 品牌素材（深蓝描边 + 蓝耳 + wink 眼 + 粉腮红）制作：`cat-lounge.svg` 是趴在卡片边线的静态姿态（前爪搭边、尾巴慢摇 2.4s、眨眼 4.4s、呼吸 3.6s），`tools/make_icons.py` 纯 Python 标准库把品牌 SVG 光栅化成各尺寸 PNG（无需 Pillow / cairosvg）。旧版跑跳动画 `cat-run.svg` 已弃用但保留在仓库供参考。
 
 ## 数据更新
 

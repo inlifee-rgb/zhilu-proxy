@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="120" height="100" role="img" aria-label="智路猫 趴在卡片边缘摇尾巴眨眼睛">
+<style>
+/* ============================================================
+   智路猫 · 趴-edge 姿态
+   真实 MIAO 头素材 + 新画趴卧身体；前爪搭卡片边线。
+   动画：尾巴慢摇 2.4s / 睁眼眨眼 4.4s / 呼吸 3.6s。
+   尊重系统「减少动态效果」。
+   ============================================================ */
+.m-tail   { animation: m-tail 2.4s ease-in-out infinite; }
+.m-blink  { animation: m-blink 4.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.m-breath { animation: m-breath 3.6s ease-in-out infinite; transform-origin: 60px 88px; }
+.m-ear    { animation: m-ear 4.4s ease-in-out infinite; }
+@keyframes m-tail   { 0%,100% { transform: rotate(-13deg); } 50% { transform: rotate(14deg); } }
+@keyframes m-blink  { 0%,91%,94%,100% { transform: scaleY(1); } 92.5% { transform: scaleY(.08); } }
+@keyframes m-breath { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
+@keyframes m-ear    { 0%,91%,94%,100% { transform: rotate(0); } 92.5% { transform: rotate(-4deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .m-tail,.m-blink,.m-breath,.m-ear { animation: none !important; }
+}
+</style>
+
+<!-- 尾巴：尾根锚在 (28,72)，整体绕尾根慢摇 -->
+<g transform="translate(28,72)">
+  <g class="m-tail">
+    <path d="M0 0 C-13 -3 -20 -15 -13 -24 C-9 -29 -2 -28 1 -23"
+          fill="none" stroke="#0D285C" stroke-width="5" stroke-linecap="round"/>
+    <path d="M-13 -24 C-9 -29 -2 -28 1 -23"
+          fill="none" stroke="#76B7FF" stroke-width="2.1" stroke-linecap="round"/>
+  </g>
+</g>
+
+<!-- 身体 + 头：轻微呼吸起伏 -->
+<g class="m-breath">
+  <!-- 趴卧身体 -->
+  <ellipse cx="56" cy="71" rx="31" ry="15.5" fill="#fff" stroke="#0D285C" stroke-width="3.2"/>
+  <path d="M63 59 C75 60 83 67 83 75 C73 73 67 67 63 59Z" fill="#DCEBFF"/>
+
+  <!-- 后爪（身下露出一点） -->
+  <path d="M31 80 q-7 3 -11 0 q-1 -5 4 -6 l9 -1Z"
+        fill="#fff" stroke="#0D285C" stroke-width="2.6" stroke-linejoin="round"/>
+
+  <!-- 前爪：搭在卡片上边线的两只小爪 -->
+  <path d="M72 81 q7 5 13 2 q2 -5 -3 -7 l-9 -3Z"
+        fill="#fff" stroke="#0D285C" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M80 83 q6 4 11 1 q1 -5 -4 -6 l-8 -2Z"
+        fill="#fff" stroke="#0D285C" stroke-width="2.4" stroke-linejoin="round"/>
+
+  <!-- 头：真实 MIAO 素材，放大到适合趴姿的比例 -->
+  <g transform="translate(70,43) scale(0.142) translate(-256,-250)">
+   <g stroke="#0D285C" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M103 245 C97 191 103 100 138 71 C157 58 206 112 224 132 Q256 127 288 132 C310 111 357 57 377 71 C410 99 415 191 409 245 C418 287 400 346 356 376 C302 412 210 412 156 376 C111 346 94 288 103 245 Z" fill="#FFFFFF" stroke-width="17"/>
+    <path d="M131 198 C131 159 133 120 146 104 C162 108 178 135 190 154 Z" fill="#76B7FF" stroke="none"/>
+    <path d="M381 198 C381 159 379 120 366 104 C350 108 334 135 322 154 Z" fill="#76B7FF" stroke="none"/>
+    <path d="M261 136 C289 139 301 155 328 173 C353 190 377 202 400 204 C377 223 342 214 316 202 C293 190 274 174 261 136Z" fill="#89BBFA" stroke="none"/>
+    <g class="m-blink">
+      <ellipse cx="202" cy="265" rx="24" ry="32" fill="#0D285C" stroke="none"/>
+      <ellipse cx="193" cy="252" rx="7" ry="10" fill="white" stroke="none"/>
+    </g>
+    <path d="M297 268 Q326 232 351 263" fill="none" stroke-width="15"/>
+    <ellipse cx="151" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+    <ellipse cx="363" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+    <path d="M247 284 Q256 279 265 284 Q256 295 247 284Z" fill="#0D285C" stroke="none"/>
+    <path d="M256 292 Q246 315 229 302 M256 292 Q268 315 285 302" fill="none" stroke-width="10"/>
+    <path d="M116 269 L72 263 M113 297 L72 313 M397 269 L440 263 M399 297 L441 313" fill="none" stroke-width="12"/>
+   </g>
+  </g>
+</g>
+</svg>

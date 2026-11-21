@@ -60,12 +60,12 @@ body {
   background: linear-gradient(132deg, #f3f8ff 0%, #fafcff 52%, #f7f4ff 100%);
   transition: border-color .2s, background .2s;
 }
-/* 跑跳猫：坐和健康卡右上角，悬浮不遮挡状态文字 */
+/* 趴-edge 小猫：前爪搭在健康卡上边线，尾巴慢摇 + 眨眼，不遮挡状态文字 */
 .mascot {
-  position: absolute; top: -20px; right: 10px;
-  width: 54px; height: 54px; z-index: 2;
+  position: absolute; top: -17px; right: 13px;
+  width: 40px; height: 34px; z-index: 2;
   pointer-events: none; user-select: none;
-  filter: drop-shadow(0 4px 5px rgba(13, 40, 92, .16));
+  filter: drop-shadow(0 3px 4px rgba(13, 40, 92, .14));
 }
 .health-warn { border-color: #fde68a; background: linear-gradient(132deg, #fffbeb 0%, #fffdf7 100%); }
 .health-err { border-color: #fecaca; background: linear-gradient(132deg, #fef2f2 0%, #fffafa 100%); }
