@@ -13,9 +13,13 @@
     <header class="header">
       <div class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="9.2" stroke="white" stroke-width="1.9" opacity=".95"/>
-          <path d="M6.9 16h18.2M16 6.8c2.8 3 4.2 6.6 4.2 9.2S18.8 22.2 16 25.2c-2.8-3-4.2-6.6-4.2-9.2S13.2 9.8 16 6.8Z" stroke="white" stroke-width="1.7" stroke-linecap="round"/>
-          <path d="M4.5 23.5 11 17l4 4 12-12" stroke="#BFDBFE" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6.5 15.6C6.1 12 6.5 6.8 8.8 5.2c1.4-1 4.2 1.9 5.5 3.3 1.1-.2 2.3-.2 3.4 0 1.3-1.4 4.1-4.3 5.5-3.3 2.3 1.6 2.7 6.8 2.3 10.4.7 2.8-.4 6-3.5 7.9-3.2 2-7.9 2-11.1 0C9 21.6 5.8 18.4 6.5 15.6Z" fill="#fff" stroke="#0D285C" stroke-width="1.9" stroke-linejoin="round"/>
+          <path d="M8.6 12.4c0-2.5.1-4.8.9-5.9 1 .3 2 1.9 2.7 3Z M23.4 12.4c0-2.5-.1-4.8-.9-5.9-1 .3-2 1.9-2.7 3Z" fill="#76B7FF"/>
+          <ellipse cx="12.7" cy="16.9" rx="1.6" ry="2.1" fill="#0D285C"/>
+          <path d="M18.6 17c1.9-2.3 3.5-.2 3.9 1.3" stroke="#0D285C" stroke-width="1.7" stroke-linecap="round"/>
+          <ellipse cx="9.7" cy="19.7" rx="1.7" ry=".9" fill="#FFB7BA"/>
+          <ellipse cx="22.4" cy="19.7" rx="1.7" ry=".9" fill="#FFB7BA"/>
+          <path d="M15.4 18.6c.5-.4 1.1-.4 1.6 0-.2.7-1.4.7-1.6 0Z" fill="#0D285C"/>
         </svg>
       </div>
       <div class="brand-text">
@@ -27,6 +31,7 @@
 
     <!-- ── Health card: 唯一状态来源，合并原先三个互相打架的提示条 ── -->
     <section id="healthCard" class="health health-ok">
+      <img id="mascot" class="mascot" src="cat-run.svg" alt="智路猫" aria-hidden="true">
       <div class="health-main">
         <div class="health-icon" id="healthIcon">
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17l9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -66,6 +71,29 @@
         <span class="kv"><i>代理端口</i><b id="proxyStateText">检测中</b></span>
       </div>
     </section>
+
+    <!-- ── Kernel: 本地代理内核检测，未安装时明确提示，避免"配了却没内核" ── -->
+    <section id="kernelCard" class="kernel kernel-ok">
+      <div class="kernel-icon" id="kernelIcon">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="kernel-copy">
+        <div id="kernelTitle" class="kernel-title">检测本地代理内核…</div>
+        <div id="kernelSub" class="kernel-sub">正在扫描常见端口</div>
+      </div>
+      <button id="kernelScanBtn" class="btn btn-mini" type="button" title="重新检测内核">重扫</button>
+    </section>
+    <div id="kernelInstall" class="kernel-install" hidden>
+      <div class="ki-title">未检测到本地代理内核</div>
+      <div class="ki-sub">扩展已就位，但本机没有运行中的代理内核。请先安装并启动其中一个（下面按钮直达官网），再回来点「重扫」：</div>
+      <div class="ki-links">
+        <a href="https://github.com/verge-rev/clash-verge-rev/releases" target="_blank" rel="noopener">Clash Verge</a>
+        <a href="https://github.com/MetaCubeX/mihomo/releases" target="_blank" rel="noopener">Mihomo</a>
+        <a href="https://github.com/2dust/v2rayN/releases" target="_blank" rel="noopener">v2rayN</a>
+        <a href="https://github.com/SagerNet/sing-box/releases" target="_blank" rel="noopener">sing-box</a>
+      </div>
+      <div class="ki-foot">已是老手？也可以直接在下方「代理入口」手动填 IP + 端口，不装内核也能用（前提是该端口有代理服务）。</div>
+    </div>
 
     <!-- ── IP / region: 双通道实测出口，最直观的"到底走没走代理"证据 ── -->
     <section class="block ip-block">
@@ -154,7 +182,7 @@
 
     <footer class="footer">
       <span>数据源：APNIC · 2026-11-21</span>
-      <span id="versionTag">v1.1.1</span>
+      <span id="versionTag">v1.2.0</span>
     </footer>
   </div>
   <script src="popup.js"></script>

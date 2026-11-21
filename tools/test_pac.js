@@ -48,13 +48,21 @@ const chromeStub = {
 
 // 探测桩：Cloudflare trace 返回日本出口（NRT 东京），myip.ipip.net 返回深圳本机
 const fetchStub = async (url) => {
-  if (String(url).indexOf('cloudflare.com/cdn-cgi/trace') >= 0) {
+  const u = String(url);
+  if (u.indexOf('cloudflare.com/cdn-cgi/trace') >= 0) {
     return { ok: true, status: 200,
       text: async () => 'fl=408f307\nh=www.cloudflare.com\nip=198.51.100.77\ncolo=NRT\nloc=JP\nwarp=off\n' };
   }
-  if (String(url).indexOf('myip.ipip.net') >= 0) {
+  if (u.indexOf('myip.ipip.net') >= 0) {
     return { ok: true, status: 200,
       text: async () => '当前 IP：203.0.113.45  来自于：中国 广东 深圳  移动' };
+  }
+  // 内核探测：模拟 7897 端口有 Clash Verge 在监听（no-cors 探测）
+  if (u.indexOf('127.0.0.1:7897/') >= 0) {
+    if (u.indexOf('/version') >= 0) {
+      return { ok: true, status: 200, text: async () => '{"version":"Mihomo Meta v1.19.11"}' };
+    }
+    return { ok: true, status: 400, text: async () => '' }; // GET / 返回 400 也算活着
   }
   throw new Error('stubbed offline');
 };
@@ -152,6 +160,14 @@ else console.log('PASS  .cn 域名在 DNS 之前命中，未触发查询');
       info.local.ip === '203.0.113.45' && /已真实生效/.test(info.verdict);
     if (!ipOk) { console.log('FAIL  IP 双通道探测判定错误: ' + JSON.stringify(info)); fail++; }
     else console.log(`PASS  IP 双通道探测 (出口 ${info.exit.ip}/${info.exit.countryZh} · 本机 ${info.local.ip} · ${info.verdict})`);
+
+    // 内核检测：7897 命中 Clash Verge，版本读得到；不应误报未安装
+    const kern = await ctx.detectKernels(cfg);
+    const kernOk = kern.found === true && kern.port === 7897 &&
+      /Clash Verge/.test(kern.name) && /Mihomo/.test(kern.version) &&
+      kern.alivePorts.indexOf(7897) >= 0;
+    if (!kernOk) { console.log('FAIL  内核检测判定错误: ' + JSON.stringify(kern)); fail++; }
+    else console.log(`PASS  内核检测 (${kern.name} · :${kern.port} · ${kern.version})`);
   } catch (e) {
     console.log('FAIL  apply()/get() 抛错（签名仍不兼容）: ' + e.message); fail++;
   }

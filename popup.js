@@ -169,6 +169,46 @@ async function retryNow() {
   await checkProxy();
 }
 
+/* ── Kernel detection ─────────────────────────────────────────── */
+const KERNEL_ICON_OK = '<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const KERNEL_ICON_MISS = '<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M9 10l6 6m0-6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+async function loadKernel() {
+  const card = $('kernelCard');
+  const btn = $('kernelScanBtn');
+  btn.disabled = true;
+  $('kernelTitle').textContent = '检测本地代理内核…';
+  $('kernelSub').textContent = '正在扫描常见端口';
+  card.className = 'kernel';
+  $('kernelIcon').innerHTML = KERNEL_ICON_OK;
+
+  const r = await send('detectKernel');
+  btn.disabled = false;
+  const install = $('kernelInstall');
+  if (!r.ok) {
+    card.className = 'kernel kernel-miss';
+    $('kernelIcon').innerHTML = KERNEL_ICON_MISS;
+    $('kernelTitle').textContent = '内核检测失败';
+    $('kernelSub').textContent = r.error || '后台未响应';
+    install.hidden = false;
+    return;
+  }
+  if (r.found) {
+    card.className = 'kernel kernel-ok';
+    $('kernelIcon').innerHTML = KERNEL_ICON_OK;
+    $('kernelTitle').textContent = '已识别：' + r.name;
+    $('kernelSub').textContent = '端口 ' + r.port + (r.version ? ' · ' + r.version : '') +
+      (r.alivePorts && r.alivePorts.length > 1 ? ' · 另发现 ' + (r.alivePorts.length - 1) + ' 个端口' : '');
+    install.hidden = true;
+  } else {
+    card.className = 'kernel kernel-miss';
+    $('kernelIcon').innerHTML = KERNEL_ICON_MISS;
+    $('kernelTitle').textContent = '未检测到代理内核';
+    $('kernelSub').textContent = '本机没有运行中的代理服务端口';
+    install.hidden = false;
+  }
+}
+
 /* ── IP / region 双通道探测 ─────────────────────────────────── */
 async function loadIpInfo() {
   const btn = $('ipRefreshBtn');
@@ -236,6 +276,7 @@ $('optDomains').addEventListener('change', (e) => save({ cnDomainList: e.target.
 $('optFailOpen').addEventListener('change', (e) => save({ failOpen: e.target.checked }));
 $('retryBtn').addEventListener('click', retryNow);
 $('ipRefreshBtn').addEventListener('click', loadIpInfo);
+$('kernelScanBtn').addEventListener('click', loadKernel);
 
 document.querySelectorAll('[data-add]').forEach((b) => {
   b.addEventListener('click', () => addRule(b.dataset.add));
@@ -287,5 +328,6 @@ $('testBtn').addEventListener('click', async () => {
   } else {
     await checkProxy();
   }
-  loadIpInfo(); // 出口探测独立于健康状态，异步进行不阻塞面板
+  loadIpInfo();   // 出口探测独立于健康状态，异步进行不阻塞面板
+  loadKernel();   // 内核检测同上
 })();

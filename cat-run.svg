@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="智路猫 跑跳动画">
+<style>
+/* ============================================================
+   智路猫 · 跑跳循环骨架动画
+   骨架分层：shadow / speed lines / rig(整体) → tail, hind legs,
+   body, fore legs, head(真实 MIAO 素材)。
+   关节用「外层 g 定位 + 内层 g 做 CSS transform」保证跨浏览器稳定。
+   1.15s 一个循环：蓄力 → 起跳 → 腾空 → 落地。
+   ============================================================ */
+.m-rig      { animation: m-rig 1.15s cubic-bezier(.45,.05,.55,.95) infinite; }
+.m-shadow   { animation: m-shadow 1.15s cubic-bezier(.45,.05,.55,.95) infinite; transform-origin: 60px 104px; }
+.m-tail     { animation: m-tail 1.15s ease-in-out infinite; }
+.m-hind-a   { animation: m-hind-a 1.15s ease-in-out infinite; }
+.m-hind-b   { animation: m-hind-b 1.15s ease-in-out infinite; }
+.m-fore-a   { animation: m-fore-a 1.15s ease-in-out infinite; }
+.m-fore-b   { animation: m-fore-b 1.15s ease-in-out infinite; }
+.m-head     { animation: m-head 1.15s ease-in-out infinite; }
+.m-blink    { animation: m-blink 4.6s ease-in-out infinite; transform-origin: 74px 40px; }
+/* 三种不同线条：冲刺横线 / 跳上弧线 / 跳下竖线 */
+.m-dash     { animation: m-dash 1.15s linear infinite; }
+.m-up       { animation: m-up 1.15s ease-out infinite; }
+.m-down     { animation: m-down 1.15s ease-in infinite; }
+
+@keyframes m-rig {
+  0%   { transform: translateY(6px) rotate(-7deg); }
+  18%  { transform: translateY(3px) rotate(6deg); }
+  46%  { transform: translateY(-15px) rotate(1deg); }
+  70%  { transform: translateY(-2px) rotate(-6deg); }
+  86%  { transform: translateY(7px) rotate(-9deg); }
+  100% { transform: translateY(6px) rotate(-7deg); }
+}
+@keyframes m-shadow {
+  0%,100% { transform: scaleX(1);    opacity:.20; }
+  46%     { transform: scaleX(.62);  opacity:.08; }
+}
+@keyframes m-tail {
+  0%,100% { transform: rotate(10deg); }
+  46%     { transform: rotate(-16deg); }
+  70%     { transform: rotate(22deg); }
+}
+@keyframes m-hind-a {
+  0%,100% { transform: rotate(18deg); }
+  46%     { transform: rotate(-30deg); }
+  70%     { transform: rotate(34deg); }
+}
+@keyframes m-hind-b {
+  0%,100% { transform: rotate(-22deg); }
+  46%     { transform: rotate(26deg); }
+  70%     { transform: rotate(-34deg); }
+}
+@keyframes m-fore-a {
+  0%,100% { transform: rotate(-20deg); }
+  46%     { transform: rotate(32deg); }
+  70%     { transform: rotate(-28deg); }
+}
+@keyframes m-fore-b {
+  0%,100% { transform: rotate(24deg); }
+  46%     { transform: rotate(-28deg); }
+  70%     { transform: rotate(30deg); }
+}
+@keyframes m-head {
+  0%,100% { transform: rotate(3deg) translateY(0); }
+  46%     { transform: rotate(-2deg) translateY(-1px); }
+  70%     { transform: rotate(5deg) translateY(1px); }
+}
+@keyframes m-blink {
+  0%,91%,95%,100% { transform: scaleY(1); }
+  93%             { transform: scaleY(.08); }
+}
+@keyframes m-dash {
+  0%   { opacity:0; transform: translateX(0); }
+  12%  { opacity:.75; }
+  34%  { opacity:0; transform: translateX(-10px); }
+  100% { opacity:0; }
+}
+@keyframes m-up {
+  0%   { opacity:0; transform: translateY(2px); }
+  20%  { opacity:.9; }
+  46%  { opacity:0; transform: translateY(-7px); }
+  100% { opacity:0; }
+}
+@keyframes m-down {
+  0%,58%  { opacity:0; transform: translateY(-6px); }
+  74%     { opacity:.85; }
+  92%     { opacity:0; transform: translateY(2px); }
+  100%    { opacity:0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-rig,.m-shadow,.m-tail,.m-hind-a,.m-hind-b,.m-fore-a,.m-fore-b,
+  .m-head,.m-blink,.m-dash,.m-up,.m-down { animation: none !important; }
+}
+</style>
+
+<!-- ground shadow -->
+<ellipse class="m-shadow" cx="60" cy="104" rx="21" ry="4.2" fill="#0D285C" opacity=".18"/>
+
+<!-- speed lines: 3 distinct line styles for up/down jump feel -->
+<g stroke-linecap="round" fill="none">
+  <!-- dash lines (horizontal rush) -->
+  <g class="m-dash" stroke="#89BBFA" stroke-width="2.4">
+    <path d="M18 52h9M13 60h12M20 68h7"/>
+  </g>
+  <!-- jump-up arcs (blue) -->
+  <g class="m-up" stroke="#2563EB" stroke-width="2.2">
+    <path d="M30 40q6-7 13-3M86 42q7-6 13 0"/>
+  </g>
+  <!-- jump-down ticks (pink/amber) -->
+  <g class="m-down" stroke="#FF9AA6" stroke-width="2.6">
+    <path d="M34 92v7M52 96v6M74 95v7M92 90v6"/>
+  </g>
+</g>
+
+<!-- ===== whole cat rig: pivot at feet (60,92) ===== -->
+<g transform="translate(60,92)">
+ <g class="m-rig">
+  <g transform="translate(-60,-92)">
+
+   <!-- tail (pivot at rump 34,70) -->
+   <g transform="translate(34,70)">
+     <g class="m-tail">
+       <path d="M0 0 C-14 -2 -20 -14 -13 -24 C-9 -30 -2 -29 0 -24"
+             fill="none" stroke="#0D285C" stroke-width="4.6" stroke-linecap="round"/>
+       <path d="M-13 -24 C-9 -30 -2 -29 0 -24" fill="none" stroke="#76B7FF" stroke-width="2" stroke-linecap="round"/>
+     </g>
+   </g>
+
+   <!-- hind legs (behind body), pivots -->
+   <g transform="translate(43,72)">
+     <g class="m-hind-b"><path d="M0 0 L-7 12 L-3 20 L4 19 L2 11 Z" fill="#fff" stroke="#0D285C" stroke-width="3" stroke-linejoin="round"/></g>
+   </g>
+   <g transform="translate(47,74)">
+     <g class="m-hind-a"><path d="M0 0 L4 13 L9 20 L15 18 L10 10 Z" fill="#fff" stroke="#0D285C" stroke-width="3" stroke-linejoin="round"/></g>
+   </g>
+
+   <!-- body -->
+   <path d="M36 66 C33 52 46 44 60 45 C74 45 84 53 82 66 C80 77 66 81 55 79 C44 78 38 74 36 66 Z"
+         fill="#fff" stroke="#0D285C" stroke-width="3.4" stroke-linejoin="round"/>
+   <!-- chest blue tint -->
+   <path d="M60 47 C70 47 78 53 78 62 C70 60 64 55 60 47Z" fill="#DCEBFF"/>
+
+   <!-- fore legs (front), pivots -->
+   <g transform="translate(72,72)">
+     <g class="m-fore-b"><path d="M0 0 L-5 13 L-1 21 L6 20 L4 11 Z" fill="#fff" stroke="#0D285C" stroke-width="3" stroke-linejoin="round"/></g>
+   </g>
+   <g transform="translate(76,71)">
+     <g class="m-fore-a"><path d="M0 0 L5 12 L11 19 L17 17 L11 9 Z" fill="#fff" stroke="#0D285C" stroke-width="3" stroke-linejoin="round"/></g>
+   </g>
+
+   <!-- head: REAL MIAO mascot path, scaled into skeleton, pivot at neck (60,46) -->
+   <g transform="translate(60,46)">
+    <g class="m-head">
+     <g transform="translate(-60,-46)">
+      <g transform="translate(70,40) scale(0.132) translate(-256,-250)">
+       <g stroke="#0D285C" stroke-linecap="round" stroke-linejoin="round">
+         <path d="M103 245 C97 191 103 100 138 71 C157 58 206 112 224 132 Q256 127 288 132 C310 111 357 57 377 71 C410 99 415 191 409 245 C418 287 400 346 356 376 C302 412 210 412 156 376 C111 346 94 288 103 245 Z" fill="#FFFFFF" stroke-width="17"/>
+         <path d="M131 198 C131 159 133 120 146 104 C162 108 178 135 190 154 Z" fill="#76B7FF" stroke="none"/>
+         <path d="M381 198 C381 159 379 120 366 104 C350 108 334 135 322 154 Z" fill="#76B7FF" stroke="none"/>
+         <path d="M261 136 C289 139 301 155 328 173 C353 190 377 202 400 204 C377 223 342 214 316 202 C293 190 274 174 261 136Z" fill="#89BBFA" stroke="none"/>
+         <g class="m-blink">
+           <ellipse cx="202" cy="265" rx="24" ry="32" fill="#0D285C" stroke="none"/>
+           <ellipse cx="193" cy="252" rx="7" ry="10" fill="white" stroke="none"/>
+         </g>
+         <path d="M297 268 Q326 232 351 263" fill="none" stroke-width="15"/>
+         <ellipse cx="151" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+         <ellipse cx="363" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+         <path d="M247 284 Q256 279 265 284 Q256 295 247 284Z" fill="#0D285C" stroke="none"/>
+         <path d="M256 292 Q246 315 229 302 M256 292 Q268 315 285 302" fill="none" stroke-width="10"/>
+         <path d="M116 269 L72 263 M113 297 L72 313 M397 269 L440 263 M399 297 L441 313" fill="none" stroke-width="12"/>
+       </g>
+      </g>
+     </g>
+    </g>
+   </g>
+
+  </g>
+ </g>
+</g>
+</svg>

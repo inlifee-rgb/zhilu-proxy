@@ -6,14 +6,17 @@
 ![license](https://img.shields.io/badge/license-MIT-16A34A?style=flat-square)
 ![rules](https://img.shields.io/badge/rules-5500%20IPv4%20%2B%202019%20IPv6-7C3AED?style=flat-square)
 
+<p align="center"><img src="cat-run.svg" width="120" height="120" alt="智路猫"></p>
+
 ## 它能做什么
 
 - **智能分流**：中国域名、中国 IP 段直连；其余全部走你指定的 HTTP 代理（默认 `127.0.0.1:7897`）。
 - **与实际系统代理解耦**：用 `chrome.proxy` API 注入 PAC，由 Chrome 自己决策，不用开 Clash 的「系统代理」或 TUN。
-- **网络出口实时探测**：面板并排显示「代理出口 IP / 地区 / 运营商」和「本机真实公网 IP / 地区」，并自动判定代理是否真的生效。探测请求本身经过 PAC（`ipinfo.io` 走代理、`myip.ipip.net` 走直连），所以显示的是**实际分流效果**，不是理论值。
+- **网络出口实时探测**：面板并排显示「代理出口 IP / 地区」和「本机真实公网 IP / 地区」，并自动判定代理是否真的生效。探测请求本身经过 PAC（`cloudflare.com/cdn-cgi/trace` 走代理、`myip.ipip.net` 走直连），所以显示的是**实际分流效果**，不是理论值。
+- **本地代理内核检测**：打开面板即扫描 12 个常见代理端口，识别 Clash Verge / Mihomo / v2rayN / sing-box 等内核并自动填入端口；没装内核时明确提示并给出官网安装入口，避免「配了代理却没内核」的假象。
 - **fail-open**：代理端口不通时自动临时直连，不会断网；恢复后自动切回。
 - **自定义规则**：域名级强制直连 / 强制代理，支持后缀匹配。
-- **浅色卡片式 UI**：单一健康状态卡，状态互斥、不打架。
+- **浅色卡片式 UI**：单一健康状态卡 + 会跑跳的品牌吉祥物「智路猫」，状态互斥、不打架，尊重系统「减少动态效果」设置。
 
 ## 分流判据（PAC，优先级从上到下）
 
@@ -44,8 +47,9 @@
 
 | 区域 | 说明 |
 |---|---|
-| 健康卡 | 单一状态裁决：正常 / 提醒 / 需处理 / 已暂停；含总开关 |
-| 网络出口 | 代理出口 vs 本机真实 IP、地区、运营商；可刷新 |
+| 健康卡 | 单一状态裁决：正常 / 提醒 / 需处理 / 已暂停；含总开关与跑跳智路猫 |
+| 代理内核 | 自动识别本机内核与端口；未安装时给出官网安装入口，可重扫 |
+| 网络出口 | 代理出口 vs 本机真实 IP、地区；可刷新 |
 | 分流模式 | 智能分流 / 全部直连 / 全部代理 |
 | 代理入口 | host + port，实时探测端口存活 |
 | 自定义规则 | 域名级强制直连 / 强制代理 |
@@ -60,7 +64,7 @@
                                           → 你的本地代理客户端 → 海外出口
 ```
 
-探测「代理出口」时，请求 `https://ipinfo.io/json` 被 PAC 判为海外 → 走代理 → 得到出口 IP；
+探测「代理出口」时，请求 `https://www.cloudflare.com/cdn-cgi/trace` 被 PAC 判为海外 → 走代理 → 得到出口 IP / 国家 / 机场代码（不限流、无需 key）；
 探测「本机真实」时，请求 `https://myip.ipip.net` 被 PAC 判为国内 → 直连 → 得到本机公网 IP。
 
 ## 隐私
@@ -78,12 +82,14 @@
 ## 开发 / 回归测试
 
 ```bash
-node tools/test_pac.js        # PAC 判定 + API 签名 + 出口探测 全量回归（需 Node.js）
+node tools/test_pac.js        # PAC 判定 + API 签名 + 出口探测 + 内核识别 全量回归（需 Node.js）
 python tools/build_cn_data.py tools/apnic-cn-lines.txt   # 由 APNIC 原始数据重新生成 data-cn.js
-python tools/make_icons.py    # 重新生成 16/32/48/128 图标
+python tools/make_icons.py    # 由 MIAO 品牌 SVG 生成 16/32/48/128 图标 + favicon（纯标准库）
 ```
 
-测试桩严格模拟 Chrome bindings：拒绝 `scope` 属性、要求 details + callback、校验 PAC 纯 ASCII，并验证代理写入成功后清空历史错误。
+测试桩严格模拟 Chrome bindings：拒绝 `scope` 属性、要求 details + callback、校验 PAC 纯 ASCII、验证代理写入成功后清空历史错误，并覆盖出口双通道探测与本地内核识别。
+
+图标与吉祥物「智路猫」基于 MIAO 品牌素材（深蓝描边 + 蓝耳 + wink 眼 + 粉腮红）制作：`cat-run.svg` 是补全身躯干与四爪骨架的跑跳循环动画，`tools/make_icons.py` 纯 Python 标准库把品牌 SVG 光栅化成各尺寸 PNG（无需 Pillow / cairosvg）。
 
 ## 数据更新
 

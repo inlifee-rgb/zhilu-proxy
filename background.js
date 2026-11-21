@@ -299,6 +299,86 @@ async function healthTick() {
   }
 }
 
+/* ----------------------------------------------------- kernel detection --- */
+/* 并行探测常见本地代理内核端口；命中后读各内核的 /version 端点识别名称。
+ * 只读探测，不改任何内核设置。端口不通时返回 found:false，供面板提示"先装内核"。 */
+const KERNEL_PORTS = [
+  { port: 7897, name: 'Clash Verge / Mihomo' },
+  { port: 7890, name: 'Clash / Clash for Windows' },
+  { port: 7891, name: 'Clash (备用端口)' },
+  { port: 7898, name: 'Clash Verge (备用端口)' },
+  { port: 9090, name: 'Clash API' },
+  { port: 10809, name: 'v2rayN / v2rayA' },
+  { port: 10808, name: 'v2rayN (HTTP)' },
+  { port: 1080, name: 'SOCKS 代理' },
+  { port: 2080, name: 'sing-box' },
+  { port: 2081, name: 'sing-box (混合)' },
+  { port: 2017, name: 'Surge' },
+  { port: 6152, name: 'Clash Verge (旧版)' }
+];
+
+async function probePort(host, port, timeoutMs) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs || 1200);
+  try {
+    // no-cors：代理端口对 GET / 通常回 400/407，但只要进程在监听就不抛错
+    await fetch('http://' + host + ':' + port + '/', {
+      signal: ctl.signal, mode: 'no-cors', cache: 'no-store'
+    });
+    return true;
+  } catch (e) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeVersion(host, port) {
+  // 各内核的只读版本端点，命中即可确认内核名/版本
+  const eps = [
+    { path: '/version', parse: (j) => (j && (j.version || j.Mihomo || j.Clash)) || '' },
+    { path: '/v1/version', parse: (j) => (j && (j.version || j.tag)) || '' }
+  ];
+  for (const ep of eps) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 1000);
+    try {
+      const r = await fetch('http://' + host + ':' + port + ep.path, {
+        signal: ctl.signal, cache: 'no-store'
+      });
+      if (!r.ok) continue;
+      const txt = await r.text();
+      let v = '';
+      try { v = ep.parse(JSON.parse(txt)); } catch (e) { v = txt.slice(0, 60); }
+      if (v) return String(v).slice(0, 80);
+    } catch (e) { /* continue */ }
+    finally { clearTimeout(timer); }
+  }
+  return '';
+}
+
+async function detectKernels(cfg) {
+  const host = String(cfg.proxyHost || '127.0.0.1');
+  const hits = await Promise.all(KERNEL_PORTS.map(async (k) => ({
+    ...k, alive: await probePort(host, k.port, 1200)
+  })));
+  const alivePorts = hits.filter((h) => h.alive).map((h) => h.port);
+  // 优先选与当前配置端口一致的，其次按 KERNEL_PORTS 顺序（Clash 系优先）
+  let best = hits.find((h) => h.alive && h.port === Number(cfg.proxyPort));
+  if (!best) best = hits.find((h) => h.alive);
+  let version = '';
+  if (best) version = await probeVersion(host, best.port);
+  return {
+    ok: true,
+    found: !!best,
+    port: best ? best.port : null,
+    name: best ? best.name : '',
+    version: version,
+    alivePorts: alivePorts,
+    checkedAt: new Date().toISOString()
+  };
+}
+
 /* -------------------------------------------------- Clash API (read only) */
 async function clashStatus(cfg) {
   const base = 'http://' + String(cfg.clashApiHost || '127.0.0.1') + ':' + (Number(cfg.clashApiPort) || 9097);
@@ -501,6 +581,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       case 'proxyAlive':
         sendResponse({ ok: await proxyAlive(cfg) });
+        break;
+      case 'detectKernel':
+        sendResponse(await detectKernels(cfg));
         break;
       case 'ipInfo':
         sendResponse(await ipInfo());
