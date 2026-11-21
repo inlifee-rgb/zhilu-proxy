@@ -6,8 +6,12 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const noop = () => {};
 const apiCalls = [];
+const _mem = {};
 const chromeStub = {
-  storage: { local: { get: async () => ({}), set: async () => {} } },
+  storage: { local: {
+    get: async (k) => { if (k == null) return Object.assign({}, _mem); const o = {}; (Array.isArray(k) ? k : [k]).forEach(x => { if (x in _mem) o[x] = _mem[x]; }); return o; },
+    set: async (o) => { Object.assign(_mem, o); }
+  } },
   proxy: {
     settings: {
       // 严格模拟真实 Chrome/Edge bindings：
@@ -39,15 +43,27 @@ const chromeStub = {
     }
   },
   alarms: { create: async () => {}, onAlarm: { addListener: noop } },
-  action: { setBadgeText: noop, setBadgeBackgroundColor: noop },
+  action: {
+    _badge: { text: '' }, _icon: null,
+    setBadgeText(o) { this._badge.text = o.text; },
+    setBadgeBackgroundColor(o) { this._badge.color = o.color; },
+    setIcon(o) { this._icon = o.path; }
+  },
+  tabs: {
+    _url: 'https://www.baidu.com/',
+    query: async () => [{ url: ctxTabsUrl(), title: 'test' }],
+    onActivated: { addListener: noop },
+    onUpdated: { addListener: noop }
+  },
   runtime: {
     onInstalled: { addListener: noop }, onStartup: { addListener: noop },
     onMessage: { addListener: noop }
   }
 };
+function ctxTabsUrl() { return chromeStub.tabs._url; }
 
 // 探测桩：Cloudflare trace 返回日本出口（NRT 东京），myip.ipip.net 返回深圳本机
-const fetchStub = async (url) => {
+let fetchStub = async (url) => {
   const u = String(url);
   if (u.indexOf('cloudflare.com/cdn-cgi/trace') >= 0) {
     return { ok: true, status: 200,
@@ -56,6 +72,15 @@ const fetchStub = async (url) => {
   if (u.indexOf('myip.ipip.net') >= 0) {
     return { ok: true, status: 200,
       text: async () => '当前 IP：203.0.113.45  来自于：中国 广东 深圳  移动' };
+  }
+  // 规则库自动更新：模拟 APNIC delegated 文本（足量条目 + 非CN噪声 + 重复行）
+  if (u.indexOf('delegated-apnic-latest') >= 0) {
+    const lines = [];
+    for (let i = 0; i < 3002; i++) lines.push('apnic|CN|ipv4|' + (11 + (i >> 8)) + '.' + (i & 255) + '.0.0|256|20260101|allocated');
+    for (let i = 0; i < 302; i++) lines.push('apnic|CN|ipv6|2001:' + i.toString(16) + '::|32|20260101|allocated');
+    lines.push('apnic|CN|ipv4|1.0.1.0|256|20260101|allocated');  // 重复
+    lines.push('apnic|US|ipv4|8.8.8.0|256|20260101|allocated');  // 非CN噪声
+    return { ok: true, status: 200, text: async () => lines.join('\n') };
   }
   // 内核探测：模拟 7897 端口有 Clash Verge 在监听（no-cors 探测）
   if (u.indexOf('127.0.0.1:7897/') >= 0) {
@@ -67,7 +92,7 @@ const fetchStub = async (url) => {
   throw new Error('stubbed offline');
 };
 const ctx = {
-  console, setTimeout, clearTimeout, AbortController,
+  console, setTimeout, clearTimeout, AbortController, URL, Date,
   fetch: fetchStub,
   chrome: chromeStub
 };
@@ -157,7 +182,7 @@ else console.log('PASS  .cn 域名在 DNS 之前命中，未触发查询');
     const info = await ctx.ipInfo();
     const ipOk = info.exit.ip === '198.51.100.77' && info.exit.countryZh === '日本' &&
       info.exit.city === '东京' && info.exit.colo === 'NRT' &&
-      info.local.ip === '203.0.113.45' && /已真实生效/.test(info.verdict);
+      info.local.ip === '203.0.113.45' && /代理通道已连通/.test(info.verdict);
     if (!ipOk) { console.log('FAIL  IP 双通道探测判定错误: ' + JSON.stringify(info)); fail++; }
     else console.log(`PASS  IP 双通道探测 (出口 ${info.exit.ip}/${info.exit.countryZh} · 本机 ${info.local.ip} · ${info.verdict})`);
 
@@ -171,6 +196,114 @@ else console.log('PASS  .cn 域名在 DNS 之前命中，未触发查询');
   } catch (e) {
     console.log('FAIL  apply()/get() 抛错（签名仍不兼容）: ' + e.message); fail++;
   }
+
+    // 当前页面路由判定：与 PAC 同规则，回答「这个页面走直连还是代理」
+    const classify = (h, c) => vm.runInContext('classifyHost(' + JSON.stringify(h) + ',' + JSON.stringify(c) + ')', ctx);
+    const smartCfg = Object.assign({}, cfg, { mode: 'smart', enabled: true, cnDomainList: true, dnsCheck: true });
+    const cases = [
+      ['baidu.com', 'direct', '中国域名库'],      // 用户截图场景：百度应直连
+      ['www.qq.com', 'direct', '中国域名库'],
+      ['gov.cn', 'direct', '.cn 域名'],
+      ['google.com', 'proxy', '海外域名'],
+      ['github.com', 'proxy', '海外域名'],
+      ['localhost', 'direct', '本地/保留地址']
+    ];
+    let routeOk = true;
+    for (const [host, want, viaPart] of cases) {
+      const d = classify(host, smartCfg);
+      if (!d || d.decision !== want || String(d.via).indexOf(viaPart) < 0) {
+        console.log(`FAIL  路由判定 ${host}: 期望 ${want}/${viaPart}，得到 ${JSON.stringify(d)}`);
+        routeOk = false;
+      }
+    }
+    // 强制规则优先于域名库：forceProxy 里放 baidu.com 应改为走代理
+    const forced = classify('baidu.com', Object.assign({}, smartCfg, { forceProxy: ['baidu.com'] }));
+    if (!forced || forced.decision !== 'proxy' || forced.via !== '自定义强制代理') {
+      console.log('FAIL  强制代理规则未覆盖域名库: ' + JSON.stringify(forced)); routeOk = false;
+    }
+    // 模式覆盖：allproxy 下海外和中国域名都走代理；direct 下都直连
+    const ap = classify('baidu.com', Object.assign({}, smartCfg, { mode: 'allproxy' }));
+    const dm = classify('google.com', Object.assign({}, smartCfg, { mode: 'direct' }));
+    if (!ap || ap.decision !== 'proxy' || !dm || dm.decision !== 'direct') {
+      console.log('FAIL  模式覆盖错误: allproxy=' + JSON.stringify(ap) + ' direct=' + JSON.stringify(dm)); routeOk = false;
+    }
+    if (routeOk) console.log('PASS  当前页面路由判定 (baidu.com→直连/中国域名库 · google.com→代理 · 强制规则/模式覆盖均正确)');
+    else fail++;
+
+    // 流量统计：trafficBucket 按 PAC 同源规则分流；自身探测域名排除
+    const bucket = (url) => vm.runInContext('trafficBucket(' + JSON.stringify(url) + ')', ctx);
+    vm.runInContext('traffic.direct.__tag="D"; traffic.proxy.__tag="P";', ctx);
+    vm.runInContext('cachedCfg = ' + JSON.stringify(smartCfg) + ';', ctx);
+    const bBaidu = bucket('https://www.baidu.com/s?wd=x');
+    const bGoogle = bucket('https://www.google.com/search?q=x');
+    const bProbe = bucket('https://www.cloudflare.com/cdn-cgi/trace');
+    const bLocal = bucket('http://127.0.0.1:7897/version');
+    const bNonHttp = bucket('chrome-extension://abc/page.html');
+    const tag = (o) => (o && o.__tag) || String(o);
+    let tfOk = tag(bBaidu) === 'D' && tag(bGoogle) === 'P' &&
+      bProbe === null && bLocal === null && bNonHttp === null;
+    if (!tfOk) {
+      console.log('FAIL  流量分流归类错误: baidu=' + tag(bBaidu) + ' google=' + tag(bGoogle) +
+        ' cloudflare=' + bProbe + ' local=' + bLocal + ' nonhttp=' + bNonHttp);
+      fail++;
+    } else console.log('PASS  流量统计分流 (百度→直连桶 · 谷歌→代理桶 · 自身探测/本地/非http已排除)');
+
+    // 工具栏角标：反映当前页面路由（直连=绿点 / 代理=紫点），且绝不再出现 'CN' 文字
+    vm.runInContext('cachedCfg = ' + JSON.stringify(smartCfg) + ';', ctx);
+    const badgeOf = async (url) => {
+      chromeStub.tabs._url = url;
+      await vm.runInContext('refreshRouteBadge()', ctx);
+      return Object.assign({}, chromeStub.action._badge);
+    };
+    const iconOf = (state) => String((chromeStub.action._icon && chromeStub.action._icon[32]) || '');
+    await badgeOf('https://www.baidu.com/');
+    const iconDirect = iconOf();
+    await badgeOf('https://www.google.com/');
+    const iconProxy = iconOf();
+    vm.runInContext('cachedCfg = ' + JSON.stringify(Object.assign({}, smartCfg, { enabled: false })) + ';', ctx);
+    await badgeOf('https://www.baidu.com/');
+    const iconOff = iconOf();
+    const badgeText = chromeStub.action._badge.text;
+    let dotOk = iconDirect.includes('icon-direct-') &&
+      iconProxy.includes('icon-proxy-') &&
+      iconOff.includes('icon-off-') &&
+      badgeText === '';   // 角标文字清空（无 CN / 无 ● 黑点）
+    if (!dotOk) {
+      console.log('FAIL  工具栏图标错误: 百度=' + iconDirect + ' 谷歌=' + iconProxy +
+        ' 暂停=' + iconOff + ' badge文字=' + JSON.stringify(badgeText));
+      fail++;
+    } else console.log('PASS  工具栏图标随路由变色 (百度绿点猫/谷歌紫点猫/暂停灰点猫 · badge文字已清空无CN黑点)');
+
+    // ── P0 规则库自动更新 ────────────────────────────────────────────
+    const beforeV4 = ctx.CN_V4_CSV.split(',').length;
+    const upd = await vm.runInContext('updateRulesFromApnic()', ctx);
+    const afterV4 = ctx.CN_V4_CSV.split(',').length;
+    const liveMeta = await vm.runInContext('ACTIVE_META', ctx);
+    let rulesOk = upd.ok && afterV4 > 3000 && liveMeta.live === true &&
+      liveMeta.v4 === afterV4 && (liveMeta.fetchedAt > 0);
+    if (!rulesOk) {
+      console.log('FAIL  规则库自动更新: ok=' + upd.ok + ' before=' + beforeV4 +
+        ' after=' + afterV4 + ' live=' + liveMeta.live + ' err=' + (upd.error || ''));
+      fail++;
+    } else console.log('PASS  规则库自动更新 (APNIC拉取→解析→覆盖全局→meta标记live, ' + beforeV4 + '→' + afterV4 + ' 条)');
+
+    // 覆盖后 buildPac 必须用新版规则（PAC 内嵌的 CN_V4_CSV 条数 = 更新后条数）
+    const pacNow = vm.runInContext('buildPac(cachedCfg)', ctx);
+    const pacHasNew = pacNow.indexOf('11.11.0.0/16') >= 0 || pacNow.indexOf('11.') >= 0;
+    if (!pacHasNew) { console.log('FAIL  PAC未使用更新后规则'); fail++; }
+    else console.log('PASS  PAC 使用更新后规则');
+
+    // 失败兜底：模拟拉取失败，规则与 meta 不应被破坏
+    const savedV4 = ctx.CN_V4_CSV;
+    const savedLive = liveMeta.live;
+    fetchStub = async () => { throw new Error('offline'); };
+    ctx.fetch = fetchStub;
+    const bad = await vm.runInContext('updateRulesFromApnic()', ctx);
+    const afterFail = ctx.CN_V4_CSV;
+    if (bad.ok || afterFail !== savedV4) {
+      console.log('FAIL  规则更新失败未兜底: ok=' + bad.ok + ' changed=' + (afterFail !== savedV4));
+      fail++;
+    } else console.log('PASS  规则拉取失败静默兜底 (保留旧规则不破坏)');
 
   console.log(`\nCN v4=${ctx.CN_V4_CSV.split(',').length} v6=${ctx.CN_V6_CSV.split(',').length} domains=${ctx.CN_DOMAIN_CSV.split(',').length}`);
   console.log(fail === 0 ? 'ALL PASS' : `${fail} FAILED`);

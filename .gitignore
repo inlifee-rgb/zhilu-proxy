@@ -6,6 +6,16 @@ tools/cn-ranges-v6.txt
 # 静态预览页：含模拟数据，仅本地调试用（正式扩展不需要）
 preview.html
 
+# 本地调试临时产物 / 无头浏览器 profile / 参考视频（体积大，不入库）
+.chrome-tmp/
+.chrome-tmp2/
+ref_video.mp4
+tools/_*.png
+_diag*.html
+_p0*.html
+_ui_check.png
+_border_check.png
+
 # 系统 / 编辑器
 .DS_Store
 Thumbs.db

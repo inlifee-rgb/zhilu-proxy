@@ -3,11 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=420, initial-scale=1">
-  <title>智路 · CN 智能分流</title>
+  <title>智路 · 智能分流</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="app">
+  <!-- 柔和渐变背景光斑：让磨砂玻璃有“可透”的底层质感 -->
+  <div class="bg-decor" aria-hidden="true">
+    <span class="bg-orb bg-orb-a"></span>
+    <span class="bg-orb bg-orb-b"></span>
+    <span class="bg-orb bg-orb-c"></span>
+    <span class="bg-orb bg-orb-d"></span>
+  </div>
+
+  <div class="app" id="app">
 
     <!-- 吉祥物：提升到面板层，可跨卡片斜跳穿梭 -->
     <div id="mascotWrap" class="mascot-wrap" aria-hidden="true">
@@ -15,27 +23,34 @@
     </div>
 
     <!-- ── Header ───────────────────────────────────────────── -->
-    <header class="header">
+    <header class="header glass spotlight">
       <div class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none">
-          <path d="M6.5 15.6C6.1 12 6.5 6.8 8.8 5.2c1.4-1 4.2 1.9 5.5 3.3 1.1-.2 2.3-.2 3.4 0 1.3-1.4 4.1-4.3 5.5-3.3 2.3 1.6 2.7 6.8 2.3 10.4.7 2.8-.4 6-3.5 7.9-3.2 2-7.9 2-11.1 0C9 21.6 5.8 18.4 6.5 15.6Z" fill="#fff" stroke="#0D285C" stroke-width="1.9" stroke-linejoin="round"/>
-          <path d="M8.6 12.4c0-2.5.1-4.8.9-5.9 1 .3 2 1.9 2.7 3Z M23.4 12.4c0-2.5-.1-4.8-.9-5.9-1 .3-2 1.9-2.7 3Z" fill="#76B7FF"/>
-          <ellipse cx="12.7" cy="16.9" rx="1.6" ry="2.1" fill="#0D285C"/>
-          <path d="M18.6 17c1.9-2.3 3.5-.2 3.9 1.3" stroke="#0D285C" stroke-width="1.7" stroke-linecap="round"/>
-          <ellipse cx="9.7" cy="19.7" rx="1.7" ry=".9" fill="#FFB7BA"/>
-          <ellipse cx="22.4" cy="19.7" rx="1.7" ry=".9" fill="#FFB7BA"/>
-          <path d="M15.4 18.6c.5-.4 1.1-.4 1.6 0-.2.7-1.4.7-1.6 0Z" fill="#0D285C"/>
-        </svg>
+        <span id="logoRouteDot" class="logo-route-dot is-gray" title="直连"></span>
+        <svg viewBox="0 0 512 512" class="brand-logo" aria-hidden="true"><g stroke="#0D285C" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M103 245 C97 191 103 100 138 71 C157 58 206 112 224 132 Q256 127 288 132 C310 111 357 57 377 71 C410 99 415 191 409 245 C418 287 400 346 356 376 C302 412 210 412 156 376 C111 346 94 288 103 245 Z" fill="#FFFFFF" stroke-width="17"/>
+          <path d="M131 198 C131 159 133 120 146 104 C162 108 178 135 190 154 Z" fill="#76B7FF" stroke="none"/>
+          <path d="M381 198 C381 159 379 120 366 104 C350 108 334 135 322 154 Z" fill="#76B7FF" stroke="none"/>
+          <path d="M261 136 C289 139 301 155 328 173 C353 190 377 202 400 204 C377 223 342 214 316 202 C293 190 274 174 261 136Z" fill="#89BBFA" stroke="none"/>
+          <ellipse cx="202" cy="265" rx="24" ry="32" fill="#0D285C" stroke="none"/>
+          <ellipse cx="193" cy="252" rx="7" ry="10" fill="white" stroke="none"/>
+          <path d="M297 268 Q326 232 351 263" fill="none" stroke-width="15"/>
+          <ellipse cx="151" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+          <ellipse cx="363" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
+          <path d="M247 284 Q256 279 265 284 Q256 295 247 284Z" fill="#0D285C" stroke="none"/>
+          <path d="M256 292 Q246 315 229 302 M256 292 Q268 315 285 302" fill="none" stroke-width="10"/>
+          <path d="M116 269 L72 263 M113 297 L72 313 M397 269 L440 263 M399 297 L441 313" fill="none" stroke-width="12"/>
+        </g></svg>
       </div>
       <div class="brand-text">
-        <div class="brand-title">智路 <span>CN 智能分流</span></div>
+        <div class="brand-title">智路 <span>智能分流</span></div>
         <div class="brand-sub">中国直连 · 海外代理 · 独立接管 Chrome</div>
       </div>
       <span id="statusChip" class="chip chip-on">运行中</span>
     </header>
 
-    <!-- ── Health card: 唯一状态来源，合并原先三个互相打架的提示条 ── -->
-    <section id="healthCard" class="health health-ok">
+    <!-- ── Health card: 玻璃 + 边缘流光 + 聚光；唯一状态来源 ── -->
+    <section id="healthCard" class="health health-ok glass spotlight has-beam">
+      <span class="beam" aria-hidden="true"></span>
       <div class="health-main">
         <div class="health-icon" id="healthIcon">
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17l9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -50,34 +65,48 @@
         </label>
       </div>
 
-      <div class="route" aria-label="分流逻辑示意">
-        <div class="route-node route-cn">
-          <span class="dot dot-green"></span>
-          <span>中国域名 / IP</span>
+      <div class="route" id="routeBar" aria-label="分流逻辑示意" aria-live="polite">
+        <div class="route-node route-cn" id="routeCn">
+          <span class="node-cap"><span class="dot dot-green"></span>中国域名 / IP</span>
           <strong>直连</strong>
+          <span class="route-host" id="routeCnHost"></span>
+          <span class="route-ip" id="localIp">检测中</span>
+          <span class="route-place" id="localPlace">本机出口</span>
         </div>
         <div class="route-line"><svg viewBox="0 0 24 12" fill="none"><path d="M2 6h18m-5-4 5 4-5 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div class="route-node route-os">
-          <span class="dot dot-blue"></span>
-          <span>海外域名 / IP</span>
+        <div class="route-node route-os" id="routeOs">
+          <span class="node-cap"><span class="dot dot-blue"></span>海外域名 / IP</span>
           <strong>走代理</strong>
+          <span class="route-host" id="routeOsHost"></span>
+          <span class="route-ip" id="exitIp">检测中</span>
+          <span class="route-place" id="exitPlace">代理出口</span>
         </div>
       </div>
+      <div class="route-verdict">
+        <span id="ipVerdict">正在探测出口与本机 IP…</span>
+        <button id="ipRefreshBtn" class="btn-link" type="button" title="重新探测出口">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          刷新
+        </button>
+      </div>
 
-      <div id="healthDetail" class="health-detail" hidden>
-        <span id="healthDetailText"></span>
-        <button id="retryBtn" class="btn btn-mini" type="button">重新接管</button>
+      <div class="route-verdict route-why" id="routeWhy" hidden>
+        <span class="rv-why-icon" aria-hidden="true">›</span>
+        <span id="routeWhyText"></span>
       </div>
 
       <div class="health-foot">
         <span class="kv"><i>Chrome 实际模式</i><b id="actualMode">读取中…</b></span>
-        <span class="kv"><i>规则覆盖</i><b id="coverage">—</b></span>
+        <span class="kv kv-rule"><i>规则覆盖</i><b id="coverage">—</b><span id="ruleAge" class="rule-age" title="规则库更新时间">—</span></span>
         <span class="kv"><i>代理端口</i><b id="proxyStateText">检测中</b></span>
+        <button id="detailOpenBtn" class="detail-open" type="button" title="展开诊断详情">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M9 5 16 12l-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
     </section>
 
-    <!-- ── Kernel: 本地代理内核检测，未安装时明确提示，避免"配了却没内核" ── -->
-    <section id="kernelCard" class="kernel kernel-ok">
+    <!-- ── Kernel: 本地代理内核检测，未安装时明确提示 ── -->
+    <section id="kernelCard" class="kernel glass spotlight">
       <div class="kernel-icon" id="kernelIcon">
         <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </div>
@@ -87,7 +116,7 @@
       </div>
       <button id="kernelScanBtn" class="btn btn-mini" type="button" title="重新检测内核">重扫</button>
     </section>
-    <div id="kernelInstall" class="kernel-install" hidden>
+    <div id="kernelInstall" class="kernel-install glass spotlight" hidden>
       <div class="ki-title">未检测到本地代理内核</div>
       <div class="ki-sub">扩展已就位，但本机没有运行中的代理内核。请先安装并启动其中一个（下面按钮直达官网），再回来点「重扫」：</div>
       <div class="ki-links">
@@ -99,45 +128,40 @@
       <div class="ki-foot">已是老手？也可以直接在下方「代理入口」手动填 IP + 端口，不装内核也能用（前提是该端口有代理服务）。</div>
     </div>
 
-    <!-- ── IP / region: 双通道实测出口，最直观的"到底走没走代理"证据 ── -->
-    <section id="ipCard" class="block ip-block">
+    <!-- ── 流量统计：本地累计，直连 / 代理分路 ── -->
+    <section id="trafficCard" class="traffic-card glass spotlight">
       <div class="section-label row">
-        <span>网络出口 · 实时探测</span>
-        <button id="ipRefreshBtn" class="btn-link" type="button" title="重新探测">
-          <svg viewBox="0 0 20 20" fill="none"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          刷新
-        </button>
+        <span>流量统计 · 本次会话</span>
+        <span class="tf-hint">本地累计</span>
       </div>
-      <div class="ip-grid">
-        <div class="ip-cell ip-exit">
-          <div class="ip-cap"><span class="dot dot-blue"></span>代理出口</div>
-          <div id="exitIp" class="ip-value">检测中</div>
-          <div id="exitPlace" class="ip-place">—</div>
-          <div id="exitOrg" class="ip-org"></div>
+      <div class="tf-grid">
+        <div class="tf-cell">
+          <div class="tf-cap"><span class="dot dot-green"></span>直连</div>
+          <div id="tfDirectBytes" class="tf-value">0 B</div>
+          <div id="tfDirectReq" class="tf-sub">0 次请求</div>
         </div>
-        <div class="ip-cell ip-local">
-          <div class="ip-cap"><span class="dot dot-green"></span>本机真实</div>
-          <div id="localIp" class="ip-value">检测中</div>
-          <div id="localPlace" class="ip-place">—</div>
-          <div id="localOrg" class="ip-org">直连出口</div>
+        <div class="tf-cell">
+          <div class="tf-cap"><span class="dot dot-blue"></span>代理</div>
+          <div id="tfProxyBytes" class="tf-value">0 B</div>
+          <div id="tfProxyReq" class="tf-sub">0 次请求</div>
         </div>
       </div>
-      <div id="ipVerdict" class="ip-verdict">正在探测出口与本机 IP…</div>
     </section>
 
-    <!-- ── Mode ─────────────────────────────────────────────── -->
-    <section class="block">
+    <!-- ── Mode: 液态玻璃选中 ── -->
+    <section class="block glass spotlight">
       <div class="section-label">分流模式</div>
-      <div class="segment" role="group" aria-label="分流模式">
-        <button class="seg is-active" data-mode="smart">
+      <div class="segment liquid" id="modeSegment" role="group" aria-label="分流模式">
+        <span class="seg-pill" id="segPill" aria-hidden="true"></span>
+        <button class="seg is-active" data-mode="smart" type="button">
           <svg viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h9M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15" cy="10" r="2.1" fill="currentColor"/></svg>
           智能分流
         </button>
-        <button class="seg" data-mode="direct">
+        <button class="seg" data-mode="direct" type="button">
           <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           全部直连
         </button>
-        <button class="seg" data-mode="allproxy">
+        <button class="seg" data-mode="allproxy" type="button">
           <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M7 10h6m-2-2 2 2-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           全部代理
         </button>
@@ -145,7 +169,7 @@
     </section>
 
     <!-- ── Endpoint ─────────────────────────────────────────── -->
-    <section class="block">
+    <section class="block glass spotlight">
       <div class="section-label row">
         <span>代理入口</span>
         <span id="proxyDotText" class="mini-state"><span id="proxyDot" class="dot dot-gray"></span>检测中</span>
@@ -160,7 +184,7 @@
     </section>
 
     <!-- ── Rules ────────────────────────────────────────────── -->
-    <details class="block fold">
+    <details class="block fold glass spotlight">
       <summary class="section-label fold-summary">自定义规则 <span class="fold-count" id="ruleCount">0</span><span class="fold-caret">⌄</span></summary>
       <div class="rule-row">
         <span class="rule-tag tag-green">强制直连</span>
@@ -177,18 +201,86 @@
     </details>
 
     <!-- ── Advanced ─────────────────────────────────────────── -->
-    <details class="block fold">
+    <details class="block fold glass spotlight" id="advancedFold">
       <summary class="section-label fold-summary">高级选项 <span class="fold-caret">⌄</span></summary>
       <label class="opt"><input id="optDns" type="checkbox"><span class="opt-box"></span><span><b>DNS 解析判定</b><small>解析域名 IP，命中中国网段即直连</small></span></label>
       <label class="opt"><input id="optDomains" type="checkbox"><span class="opt-box"></span><span><b>内置中国域名库</b><small>.cn 后缀 + 常用中国站点，优先直连</small></span></label>
       <label class="opt"><input id="optFailOpen" type="checkbox"><span class="opt-box"></span><span><b>代理离线自动直连</b><small>Clash 没开也不会断网</small></span></label>
     </details>
 
+    <div class="app-tail"></div>
     <footer class="footer">
       <span>数据源：APNIC · 2026-11-21</span>
-      <span id="versionTag">v1.3.0</span>
+      <span id="versionTag">v1.9.0</span>
     </footer>
   </div>
+
+  <!-- ── 点击展开放大：诊断详情视图 ── -->
+  <div id="detailLayer" class="detail-layer" hidden>
+    <div class="detail-backdrop" data-detail-close></div>
+    <div class="detail-sheet glass" role="dialog" aria-label="诊断详情">
+      <div class="ds-head">
+        <span class="ds-icon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h3l2-6 3 12 3-9 2 3h3" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="ds-title-wrap">
+          <div class="ds-title">运行诊断</div>
+          <div class="ds-sub">实时读取 Chrome 代理与本地内核状态</div>
+        </div>
+        <button id="detailCloseBtn" class="ds-close" type="button" title="收起" data-detail-close>
+          <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="ds-body">
+        <div class="ds-hero" id="dHero">分流正常</div>
+        <div class="ds-grid">
+          <div class="ds-kv"><span>实际模式</span><b id="dActual">—</b></div>
+          <div class="ds-kv"><span>控制权</span><b id="dControl">—</b></div>
+          <div class="ds-kv"><span>代理端口</span><b id="dPort">—</b></div>
+          <div class="ds-kv"><span>本地内核</span><b id="dKernel">—</b></div>
+          <div class="ds-kv"><span>规则覆盖</span><b id="dCoverage">—</b></div>
+          <div class="ds-kv"><span>规则更新</span><b id="dRuleAge">—</b></div>
+          <div class="ds-kv"><span>降级状态</span><b id="dOffline">—</b></div>
+        </div>
+        <div class="ds-note" id="dError" hidden></div>
+        <button id="updateRulesBtn" class="ds-retry ds-secondary" type="button">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="updateRulesLabel">更新规则库（APNIC）</span>
+        </button>
+        <button id="retryBtn" class="ds-retry" type="button">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          重新接管代理
+        </button>
+        <div class="ds-tip">
+          <span class="dot dot-blue"></span>
+          诊断数据来自扩展实时状态，非缓存；点右上角 × 原路收回。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 玻璃停靠栏：底部浮动快捷导航 ── -->
+  <nav class="dock glass" aria-label="快捷导航">
+    <button class="dock-item" data-scroll="healthCard" data-label="状态" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h3l2-6 3 12 3-9 2 3h3" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="dock-item" data-scroll="kernelCard" data-label="内核" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button class="dock-item" data-scroll="healthCard" data-label="出口" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.5c2.4 2.4 2.4 14.6 0 17M12 3.5c-2.4 2.4-2.4 14.6 0 17" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
+    <button class="dock-item" data-scroll="trafficCard" data-label="流量" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 18V9m5 9V5m5 13v-6m5 6V8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button class="dock-item" data-action="test" data-label="连通" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17l9-10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="dock-item" data-scroll="advancedFold" data-label="设置" type="button">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2 5.6 5.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
+  </nav>
+
   <script src="popup.js"></script>
 </body>
 </html>

@@ -160,6 +160,17 @@ def collect_paths(svg_path: Path):
             out = dict(attrs)
             out["d"] = elem.attrib["d"]
             shapes.append(out)
+        elif elem.tag.endswith("rect"):
+            # Full-canvas rounded backdrop (<rect width height rx fill>). Without it
+            # the white cat floats on transparent bg and looks tiny in Chrome's light
+            # toolbar. Rasterize as a rounded rect point ring so it fills the icon.
+            out = dict(attrs)
+            out["_rect"] = (
+                float(elem.attrib.get("x", 0)), float(elem.attrib.get("y", 0)),
+                float(elem.attrib.get("width", 0)), float(elem.attrib.get("height", 0)),
+                float(elem.attrib.get("rx", 0)),
+            )
+            shapes.append(out)
         elif elem.tag.endswith("ellipse"):
             out = dict(attrs)
             out["_ellipse"] = (
@@ -212,6 +223,23 @@ def ellipse_points(cx, cy, rx, ry, steps=24):
                 u**3 * p0[0] + 3 * u*u*t * p1[0] + 3 * u*t*t * p2[0] + t**3 * p3[0],
                 u**3 * p0[1] + 3 * u*u*t * p1[1] + 3 * u*t*t * p2[1] + t**3 * p3[1],
             ))
+    return out
+
+def rounded_rect_points(x, y, w, h, r, steps=16):
+    """Sample a rounded rectangle outline into a closed ring of points."""
+    r = max(0.0, min(r, w / 2.0, h / 2.0))
+    corners = [
+        (x + w - r, y + r, -90, 0),      # top-right
+        (x + w - r, y + h - r, 0, 90),    # bottom-right
+        (x + r, y + h - r, 90, 180),      # bottom-left
+        (x + r, y + r, 180, 270),         # top-left
+    ]
+    import math
+    out = []
+    for cx, cy, a0, a1 in corners:
+        for k in range(steps + 1):
+            a = math.radians(a0 + (a1 - a0) * k / steps)
+            out.append((cx + r * math.cos(a), cy + r * math.sin(a)))
     return out
 
 # ---------- raster primitives ----------
@@ -290,42 +318,107 @@ def downsample(px, size):
                 out[j+3] = acc[3] // (step*step)
     return out
 
-def main():
-    OUT.mkdir(parents=True, exist_ok=True)
+def render_base(zoom=1.5):
+    """Rasterize the MIAO brand SVG onto the master canvas, return pixel buffer.
+
+    Two scaling rules:
+      - The full-canvas rounded <rect> backdrop uses base_scale only (fills the
+        whole icon) — this is what makes the icon read as a solid tile in Chrome's
+        light toolbar instead of a small white cat floating on transparency.
+      - Cat shapes use base_scale * zoom, scaled about viewBox center, so the cat
+        occupies more of the tile. The source SVG wraps the cat in scale(.883)
+        with big built-in padding, so zoom must be generous: tuned 1.14 -> 1.26
+        -> 1.5. At 1.5 the cat spans ~79% width / ~88% height of the canvas
+        (x 54..458, y 12..463) — no ear/whisker clipping, but visually as large
+        as the solid-color icons next to it in Chrome's toolbar.
+    """
     shapes, root_attrs = collect_paths(SVG)
     px = bytearray(N * N * 4)
     vb = [float(v) for v in root_attrs.get("viewBox", "0 0 512 512").split()]
-    scale = N / vb[2] if vb[2] else 1.0
+    base_scale = N / vb[2] if vb[2] else 1.0
+    scale = base_scale * zoom
+    ax, ay = vb[0] + vb[2] / 2.0, vb[1] + vb[3] / 2.0   # viewBox center = zoom anchor
+    cx0 = cy0 = N / 2.0
     count = 0
     for sh in shapes:
-        if "_ellipse" in sh:
+        is_backdrop = "_rect" in sh
+        if is_backdrop:
+            rx, ry, rw, rh, rr = sh["_rect"]
+            subs = [rounded_rect_points(rx, ry, rw, rh, rr)]
+            cur_scale = base_scale   # backdrop fills canvas, no zoom
+        elif "_ellipse" in sh:
             ring = ellipse_points(*sh["_ellipse"])
             subs = [apply_transform(ring, sh.get("transform"))] if ring else []
+            cur_scale = scale
         else:
             subs = parse_path(sh["d"])
             subs = [apply_transform(p, sh.get("transform")) for p in subs]
-        # scale from viewBox units to canvas pixels
-        subs = [[(x*scale, y*scale) for (x, y) in p] for p in subs]
+            cur_scale = scale
+        # scale about viewBox center so zoom enlarges in place (not offset to corner)
+        subs = [[((x - ax) * cur_scale + cx0, (y - ay) * cur_scale + cy0) for (x, y) in p] for p in subs]
         fill_c = hexcolor(sh.get("fill", "#000000"))
         if fill_c:
             for p in subs:
                 fill(px, p, fill_c)
         stroke_c = hexcolor(sh.get("stroke"))
         try:
-            sw = float(sh.get("stroke-width", "1")) * scale
+            sw = float(sh.get("stroke-width", "1")) * cur_scale
         except ValueError:
             sw = 1.0
         if stroke_c:
             stroke(px, subs, stroke_c, sw)
         count += 1
-    print(f"Rasterized {count} paths from {SVG.name}")
-    for size in (16, 32, 48, 128):
-        target = OUT / f"icon{size}.png"
-        target.write_bytes(png(size, downsample(px, size)))
-        print(f"OK {target.name} {target.stat().st_size} bytes")
+    print(f"Rasterized {count} paths from {SVG.name} (zoom={zoom}, backdrop included)")
+    return px
+
+
+def add_status_dot(px, color_hex):
+    """Draw a LARGE status dot at bottom-right with a dark outline + white ring.
+
+    Toolbar icons render at ~16px; the old dot (r=0.078N) became ~1px and was
+    unreadable. New dot is bigger with a dark edge so it stays visible at 16px.
+    """
+    color = hexcolor(color_hex)
+    # Cat head was enlarged to zoom=1.5, so its right cheek reaches ~0.89N.
+    # Move the dot toward the very corner and slim it so it no longer covers
+    # the cheek, while the colored core stays ~1.8px at 16px (still legible).
+    cx, cy = N * 0.85, N * 0.85          # bottom-right corner, clear of the face
+    r_outer = N * 0.15                   # dark outline radius
+    r_white = N * 0.133                  # white ring radius
+    r_color = N * 0.110                  # color radius (~1.8px at 16px)
+    disk(px, cx, cy, r_outer, (13, 40, 92, 255))    # dark keep-out edge
+    disk(px, cx, cy, r_white, (255, 255, 255, 255)) # white ring
+    disk(px, cx, cy, r_color, color)                # status color
+
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    base = render_base()
+    sizes = (16, 32, 48, 128)
+
+    # default / no-status icon (manifest default_icon + store listing)
+    for size in sizes:
+        (OUT / f"icon{size}.png").write_bytes(png(size, downsample(base, size)))
+    print("OK base icons (icon16/32/48/128.png)")
+
+    # status variants: cat head + small colored dot
+    # direct=green, proxy=violet, off/gray, error=red
+    DOT_COLORS = {
+        "direct": "#22C55E",
+        "proxy":  "#7C3AED",
+        "off":    "#94A3B8",
+        "error":  "#EF4444",
+    }
+    for name, color in DOT_COLORS.items():
+        px = bytearray(base)              # fresh copy per variant
+        add_status_dot(px, color)
+        for size in sizes:
+            (OUT / f"icon-{name}-{size}.png").write_bytes(png(size, downsample(px, size)))
+        print(f"OK icon-{name}-* ({color})")
+
     # favicon.ico (single 32x32 image in ICO container)
     ico = OUT / "favicon.ico"
-    img32 = png(32, downsample(px, 32))
+    img32 = png(32, downsample(base, 32))
     header = struct.pack("<HHH", 0, 1, 1)
     entry = struct.pack("<BBBBHHII", 32, 32, 0, 0, 1, 32, len(img32), 6 + 16)
     ico.write_bytes(header + entry + img32)

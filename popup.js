@@ -9,6 +9,7 @@ function send(type, patch) {
 
 let state = null;
 let portAlive = null;
+let kernelInfo = null;   // 最近一次内核检测结果，供诊断详情读取
 
 const MODE_TEXT = {
   pac_script: 'PAC 智能分流',
@@ -17,6 +18,27 @@ const MODE_TEXT = {
   system: '跟随系统',
   unknown: '未接管'
 };
+
+/* 规则库版本：显示"今天/N天前 + 实时/内置"，超 30 天标黄提醒更新。 */
+function ruleAgeLabel(m) {
+  if (!m) return { label: '—', stale: false };
+  const live = !!m.live;
+  const age = (typeof m.ageDays === 'number') ? m.ageDays : null;
+  const when = m.generated && m.generated !== '—' ? m.generated : '';
+  let label;
+  if (age === null) label = (when || '内置') + (live ? ' · 实时' : '');
+  else if (age <= 0) label = '今天' + (live ? ' · 实时' : '');
+  else label = age + ' 天前' + (live ? ' · 实时' : '');
+  return { label, stale: age !== null && age > 30 };
+}
+function renderRuleAge(m) {
+  const el = $('ruleAge');
+  if (!el) return;
+  const r = ruleAgeLabel(m);
+  el.textContent = r.label;
+  el.classList.toggle('is-stale', r.stale);
+  el.title = (m && m.source ? m.source + '\n' : '') + (m && m.generated ? '生成于 ' + m.generated : '内置基线');
+}
 
 /* 单一健康裁决：所有状态归一到一个结论，杜绝自相矛盾的多条提示 */
 function verdict(s) {
@@ -27,29 +49,25 @@ function verdict(s) {
   if (s.lastError) {
     return {
       kind: 'err', chip: '需处理', title: '代理写入失败',
-      sub: 'Chrome 拒绝了代理设置，点下方重试',
-      detail: '错误：' + s.lastError
+      sub: 'Chrome 拒绝代理设置 · 点右侧 › 诊断并重试'
     };
   }
   if (s.actual === 'unknown' || s.actual === 'system') {
     return {
       kind: 'err', chip: '需处理', title: '尚未接管 Chrome',
-      sub: '请在 chrome://extensions 允许「更改代理设置」',
-      detail: '读取到的实际模式：' + (MODE_TEXT[s.actual] || s.actual)
+      sub: '请允许「更改代理设置」· 点 › 诊断'
     };
   }
   if (s.offline) {
     return {
       kind: 'warn', chip: '已降级', title: '代理离线 · 临时直连',
-      sub: 'Clash 未响应，联网不受影响',
-      detail: '端口连续失败 ' + (s.missCount || 0) + ' 次，已临时直连，恢复后自动切回'
+      sub: 'Clash 未响应，联网不受影响 · 恢复后自动切回'
     };
   }
   if (portAlive === false) {
     return {
       kind: 'warn', chip: '端口异常', title: '代理端口未响应',
-      sub: '分流规则仍在，但代理出口连不上',
-      detail: '检查 Clash 是否运行、端口是否为 ' + c.proxyPort
+      sub: '分流规则仍生效 · 端口 ' + c.proxyPort + ' 连不上'
     };
   }
   return { kind: 'ok', chip: '运行中', title: '分流正常', sub: 'Chrome 流量已由扩展接管' };
@@ -68,8 +86,10 @@ function render(s) {
   const v = verdict(s);
 
   // 健康卡：颜色 / 文案 / 图标统一由 verdict 决定
+  // 注意：整体赋值 className 时务必保留 glass / spotlight / has-beam，
+  // 否则渲染一次就把 HTML 上的特效类冲掉（健康卡/内核卡曾因此失去聚光）
   const card = $('healthCard');
-  card.className = 'health health-' + v.kind;
+  card.className = 'health health-' + v.kind + ' glass spotlight has-beam';
   $('healthIcon').innerHTML = ICONS[v.kind];
   $('healthTitle').textContent = v.title;
   $('healthSub').textContent = v.sub;
@@ -81,16 +101,13 @@ function render(s) {
   );
   chip.textContent = v.chip;
 
-  const detail = $('healthDetail');
-  detail.hidden = !v.detail;
-  if (v.detail) $('healthDetailText').textContent = v.detail;
-
   $('masterToggle').checked = !!c.enabled;
 
   $('actualMode').textContent = MODE_TEXT[s.actual] || s.actual || '—';
   $('actualMode').title = s.levelOfControl ? 'Chrome 控制权：' + s.levelOfControl : '';
   const m = s.meta || {};
   $('coverage').textContent = m.v4 ? `${m.v4} 网段 / ${m.domains} 域名` : '—';
+  renderRuleAge(m);
   $('proxyStateText').textContent = portAlive === null ? '检测中' : (portAlive ? '正常' : '未响应');
 
   document.querySelectorAll('.seg').forEach((b) => {
@@ -107,6 +124,9 @@ function render(s) {
   $('ruleCount').textContent = (c.forceDirect || []).length + (c.forceProxy || []).length;
   renderChips('directChips', c.forceDirect, 'direct');
   renderChips('proxyChips', c.forceProxy, 'proxy');
+
+  movePill(true);    // 液态胶囊跟随 active 段；展开详情同步数据
+  if (!$('detailLayer').hidden) fillDetail();
 }
 
 function renderChips(elId, list, kind) {
@@ -139,7 +159,7 @@ function renderChips(elId, list, kind) {
 
 async function save(patch) {
   const r = await send('set', patch);
-  if (r.ok && r.cfg) await refresh();
+  if (r.ok && r.cfg) { await refresh(); loadRoute(); } // 改模式后重判当前页面路由
   return r;
 }
 
@@ -164,9 +184,16 @@ async function checkProxy() {
 }
 
 async function retryNow() {
-  await send('retry');
-  await refresh();
-  await checkProxy();
+  const btn = $('retryBtn');
+  if (btn) btn.disabled = true;
+  try {
+    await send('retry');
+    await refresh();
+    await checkProxy();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  if ($('detailLayer') && !$('detailLayer').hidden) closeDetail();
 }
 
 /* ── Kernel detection ─────────────────────────────────────────── */
@@ -179,14 +206,15 @@ async function loadKernel() {
   btn.disabled = true;
   $('kernelTitle').textContent = '检测本地代理内核…';
   $('kernelSub').textContent = '正在扫描常见端口';
-  card.className = 'kernel';
+  card.className = 'kernel glass spotlight';
   $('kernelIcon').innerHTML = KERNEL_ICON_OK;
 
   const r = await send('detectKernel');
   btn.disabled = false;
+  kernelInfo = r;
   const install = $('kernelInstall');
   if (!r.ok) {
-    card.className = 'kernel kernel-miss';
+    card.className = 'kernel kernel-miss glass spotlight';
     $('kernelIcon').innerHTML = KERNEL_ICON_MISS;
     $('kernelTitle').textContent = '内核检测失败';
     $('kernelSub').textContent = r.error || '后台未响应';
@@ -194,14 +222,14 @@ async function loadKernel() {
     return;
   }
   if (r.found) {
-    card.className = 'kernel kernel-ok';
+    card.className = 'kernel kernel-ok glass spotlight';
     $('kernelIcon').innerHTML = KERNEL_ICON_OK;
     $('kernelTitle').textContent = '已识别：' + r.name;
     $('kernelSub').textContent = '端口 ' + r.port + (r.version ? ' · ' + r.version : '') +
       (r.alivePorts && r.alivePorts.length > 1 ? ' · 另发现 ' + (r.alivePorts.length - 1) + ' 个端口' : '');
     install.hidden = true;
   } else {
-    card.className = 'kernel kernel-miss';
+    card.className = 'kernel kernel-miss glass spotlight';
     $('kernelIcon').innerHTML = KERNEL_ICON_MISS;
     $('kernelTitle').textContent = '未检测到代理内核';
     $('kernelSub').textContent = '本机没有运行中的代理服务端口';
@@ -209,37 +237,108 @@ async function loadKernel() {
   }
 }
 
+/* ── 当前页面路由：直接体现在健康卡的「直连 ↔ 代理」示意条上 ── */
+/* 命中的一侧亮起 + 显示域名，另一侧灰掉；logo 灯同步：直连=绿、代理=紫 */
+async function loadRoute() {
+  const bar = $('routeBar');
+  const cn = $('routeCn'), os = $('routeOs');
+  const cnHost = $('routeCnHost'), osHost = $('routeOsHost');
+  const dot = $('logoRouteDot');
+  if (!bar || !cn || !os) return;
+
+  // 复位：未判定时两侧中性
+  bar.classList.remove('is-resolved');
+  cn.classList.remove('is-on'); os.classList.remove('is-on');
+  if (cnHost) cnHost.textContent = '';
+  if (osHost) osHost.textContent = '';
+  if (dot) { dot.className = 'logo-route-dot is-gray'; dot.title = '判定中'; }
+
+  const r = await send('currentRoute');
+  const d = (r && r.decision) || {};
+  const dec = d.decision;
+  const host = r && r.available ? (r.host || '') : '';
+
+  if (dec !== 'direct' && dec !== 'proxy') {
+    // 无法判定：两侧都灰，logo 灯用琥珀色提示
+    bar.classList.remove('is-resolved');
+    if (dot) { dot.className = 'logo-route-dot is-warn'; dot.title = '无法判定当前页面'; }
+    return;
+  }
+
+  bar.classList.add('is-resolved');
+  if (dec === 'direct') {
+    cn.classList.add('is-on');
+    if (cnHost) cnHost.textContent = host ? ('当前 ' + host) : '';
+    if (dot) { dot.className = 'logo-route-dot is-green'; dot.title = '当前页面：直连（绿点）'; }
+  } else {
+    os.classList.add('is-on');
+    if (osHost) osHost.textContent = host ? ('当前 ' + host) : '';
+    if (dot) { dot.className = 'logo-route-dot is-purple'; dot.title = '当前页面：走代理（紫点）'; }
+  }
+  bar.title = host ? (host + ' · ' + (d.via || '') + (d.detail ? ' · ' + d.detail : '')) : '';
+
+  // 判定可解释：明确告诉用户「当前页面因为什么走了这条路」
+  const whyBox = $('routeWhy'), whyText = $('routeWhyText');
+  if (whyBox && whyText) {
+    if (host && d.via) {
+      const verdict = dec === 'direct' ? '直连' : '走代理';
+      whyText.textContent = host + ' → ' + verdict + '：' + d.via;
+      whyBox.hidden = false;
+    } else {
+      whyBox.hidden = true;
+    }
+  }
+}
+
+/* ── 流量统计：读取后台累计的直连 / 代理字节与请求数 ─────────── */
+function fmtBytes(n) {
+  n = Math.max(0, Number(n) || 0);
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+async function loadTraffic() {
+  const dB = $('tfDirectBytes'), dR = $('tfDirectReq');
+  const pB = $('tfProxyBytes'), pR = $('tfProxyReq');
+  if (!dB || !pB) return;
+  const r = await send('trafficStats');
+  const t = (r && r.stats) || {};
+  if (dB) dB.textContent = fmtBytes(t.direct && t.direct.bytes);
+  if (dR) dR.textContent = ((t.direct && t.direct.requests) || 0) + ' 次请求';
+  if (pB) pB.textContent = fmtBytes(t.proxy && t.proxy.bytes);
+  if (pR) pR.textContent = ((t.proxy && t.proxy.requests) || 0) + ' 次请求';
+}
+
 /* ── IP / region 双通道探测 ─────────────────────────────────── */
 async function loadIpInfo() {
   const btn = $('ipRefreshBtn');
-  btn.disabled = true;
-  btn.classList.add('is-spin');
-  ['exitIp', 'localIp'].forEach((id) => { $(id).textContent = '检测中'; });
-  ['exitPlace', 'exitOrg'].forEach((id) => { $(id).textContent = '—'; });
-  $('localPlace').textContent = '—';
-  $('localOrg').textContent = '直连出口';
+  if (btn) { btn.disabled = true; btn.classList.add('is-spin'); }
+  const set = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+  set('exitIp', '检测中'); set('localIp', '检测中');
+  set('exitPlace', '检测中'); set('localPlace', '检测中');
   const v = $('ipVerdict');
-  v.className = 'ip-verdict';
-  v.textContent = '正在探测出口与本机 IP…';
+  if (v) { v.className = 'rv-text'; v.textContent = '正在探测出口与本机 IP…'; }
 
   const r = await send('ipInfo');
-  btn.disabled = false;
-  btn.classList.remove('is-spin');
+  if (btn) { btn.disabled = false; btn.classList.remove('is-spin'); }
   if (!r.ok) {
-    v.className = 'ip-verdict err';
-    v.textContent = '探测失败：' + (r.error || '后台未响应');
+    if (v) { v.className = 'rv-text err'; v.textContent = '探测失败：' + (r.error || '后台未响应'); }
+    set('exitIp', '失败'); set('localIp', '失败');
     return;
   }
   const e = r.exit || {};
   const l = r.local || {};
-  $('exitIp').textContent = e.ok ? e.ip : '失败';
-  $('exitPlace').textContent = e.ok ? (e.place || '—') : (e.error || '—');
-  $('exitOrg').textContent = e.ok ? (e.org || '') : '';
-  $('localIp').textContent = l.ok ? l.ip : '失败';
-  $('localPlace').textContent = l.ok ? (l.place || '—') : (l.error || '—');
-  $('localOrg').textContent = l.ok ? '直连出口' : '';
-  v.className = 'ip-verdict' + (r.kind === 'warn' ? ' warn' : '');
-  v.textContent = r.verdict || '探测完成';
+  // 简洁呈现：IP 一行 + 地域一行（如 「13.208.38.214」「日本 · 大阪」）
+  set('exitIp', e.ok ? e.ip : '失败');
+  set('exitPlace', e.ok ? (e.place || '—') : (e.error || '—'));
+  set('localIp', l.ok ? l.ip : '失败');
+  set('localPlace', l.ok ? (l.place || '—') : (l.error || '—'));
+  if (v) {
+    v.className = 'rv-text' + (r.kind === 'warn' ? ' warn' : '');
+    // 出口探测只反映代理通道通不通，不代表当前页面走哪条路（见上方亮起的路由节点）
+    v.textContent = (r.verdict || '探测完成') + '（仅代理通道）';
+  }
 }
 
 function normalizeDomain(raw) {
@@ -261,6 +360,184 @@ function addRule(kind) {
   save({ [key]: cur });
 }
 
+/* ── 液态玻璃选中：水滴拉伸 + 回弹的滑动胶囊 ─────────────────────
+ * 参考演示：选中块切换时像一滴水被拉长 → 滑向新位 → 到位回弹。
+ * 优先用 Web Animations API 播五段关键帧（压缩→拉伸→过冲→回弹→定格）；
+ * 不支持时用 CSS 变量 + 定时器降级（也让纯 Node 桩测试可验证）。
+ * ───────────────────────────────────────────────────────────── */
+let pillX = null;
+function movePill(animate) {
+  const seg = $('modeSegment');
+  const pill = $('segPill');
+  if (!seg || !pill) return;
+  const active = seg.querySelector('.seg.is-active');
+  if (!active) return;
+  // 按钮相对 segment 的偏移（pill 的 left:4px 基准）
+  const x = active.offsetLeft - 4;
+  const w = active.offsetWidth;
+  pill.style.width = w + 'px';
+  if (pillX === null || !animate) {
+    pill.style.setProperty('--pill-x', x + 'px');
+    pill.style.setProperty('--pill-sx', '1');
+    pill.style.setProperty('--pill-sy', '1');
+    pill.classList.add('is-ready');
+    pillX = x;
+    return;
+  }
+  const from = pillX;
+  const dist = x - from;
+  const dir = dist >= 0 ? 1 : -1;
+  // 位移越大拉得越长，同时垂直压扁（体积守恒的“水滴”感）
+  const stretch = 1 + Math.min(0.34, Math.abs(dist) / 150);
+  const squash = 1 - Math.min(0.16, Math.abs(dist) / 320);
+  pill.style.transformOrigin = dir > 0 ? 'left center' : 'right center';
+  pill.style.setProperty('--pill-x', x + 'px');
+  pill.style.setProperty('--pill-sx', String(stretch));
+  pill.style.setProperty('--pill-sy', String(squash));
+  pillX = x;
+
+  const settle = () => {
+    pill.style.setProperty('--pill-sx', '1');
+    pill.style.setProperty('--pill-sy', '1');
+    pill.style.transformOrigin = 'center center';
+  };
+  clearTimeout(movePill._t);
+  const noMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (typeof pill.animate === 'function' && !noMotion) {
+    if (movePill._anim) { try { movePill._anim.cancel(); } catch (_) {} }
+    // 五段形变：静止 → 起步压缩 → 途中拉长 → 过冲微缩 → 定格
+    movePill._anim = pill.animate([
+      { transform: `translateX(${from}px) scale(1, 1)` },
+      { transform: `translateX(${from + dist * 0.30}px) scale(${stretch}, ${squash})`, offset: 0.38 },
+      { transform: `translateX(${x - dir * 6}px) scale(${1 + (stretch - 1) * 0.35}, ${1 + (squash - 1) * 0.35})`, offset: 0.72 },
+      { transform: `translateX(${x + dir * 3}px) scale(0.97, 1.03)`, offset: 0.88 },
+      { transform: `translateX(${x}px) scale(1, 1)` }
+    ], { duration: 560, easing: 'cubic-bezier(.34, 1.2, .42, 1)' });
+    movePill._anim.onfinish = settle;
+    movePill._t = setTimeout(settle, 640); // 兜底：onfinish 未触发也要复原
+  } else {
+    movePill._t = setTimeout(settle, 260);
+  }
+}
+
+/* ── 聚光卡片：光斑跟随 + 边框提亮 + ≤4° 3D 倾斜 ─────────────── */
+const TILT_MAX = 4;
+function initSpotlights() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.spotlight').forEach((card) => {
+    // 注入真实 DOM 光斑层（末位子元素，天然盖在内容之上）：
+    // 伪元素在健康卡/内核卡上会被内容的独立层叠上下文盖住，真实子元素不会。
+    // 真实 DOM 光斑层：不用 :scope（部分内核不支持），也兼容无 DOM 的测试桩
+    if (typeof document.createElement === 'function' && typeof card.appendChild === 'function' && card.children) {
+      let hasGlow = false;
+      for (const kid of card.children) { if (kid.classList && kid.classList.contains('spot-glow')) { hasGlow = true; break; } }
+      if (!hasGlow) {
+        const glow = document.createElement('span');
+        glow.className = 'spot-glow';
+        glow.setAttribute('aria-hidden', 'true');
+        card.appendChild(glow);
+      }
+    }
+    card.addEventListener('pointermove', (e) => {
+      const r = card.getBoundingClientRect();
+      const px = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const py = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      card.style.setProperty('--sx', (px * 100).toFixed(1) + '%');
+      card.style.setProperty('--sy', (py * 100).toFixed(1) + '%');
+      card.style.setProperty('--ry', ((px - 0.5) * 2 * TILT_MAX).toFixed(2) + 'deg');
+      card.style.setProperty('--rx', ((0.5 - py) * 2 * TILT_MAX).toFixed(2) + 'deg');
+    });
+    card.addEventListener('pointerleave', () => {
+      card.style.setProperty('--rx', '0deg');
+      card.style.setProperty('--ry', '0deg');
+      card.style.setProperty('--sx', '50%');
+      card.style.setProperty('--sy', '50%');
+    });
+  });
+}
+
+/* ── 点击展开放大：诊断详情 ─────────────────────────────────── */
+function fillDetail() {
+  const s = state;
+  if (!s) return;
+  const v = verdict(s);
+  const hero = $('dHero');
+  hero.textContent = v.title;
+  hero.className = 'ds-hero' + (v.kind === 'warn' ? ' warn' : (v.kind === 'err' || v.kind === 'off' ? ' err' : ''));
+  $('dActual').textContent = MODE_TEXT[s.actual] || s.actual || '—';
+  $('dControl').textContent = s.levelOfControl || '—';
+  $('dPort').textContent = (s.cfg.proxyHost || '127.0.0.1') + ':' + s.cfg.proxyPort +
+    ' · ' + (portAlive === null ? '检测中' : portAlive ? '正常' : '未响应');
+  $('dKernel').textContent = kernelInfo && kernelInfo.found ? kernelInfo.name :
+    (kernelInfo ? '未检测到' : '检测中');
+  $('dCoverage').textContent = s.meta && s.meta.v4 ? `${s.meta.v4} 网段 / ${s.meta.domains} 域名` : '—';
+  const dRule = $('dRuleAge');
+  if (dRule) {
+    const r = ruleAgeLabel(s.meta);
+    dRule.textContent = r.label;
+    dRule.classList.toggle('is-stale', r.stale);
+  }
+  $('dOffline').textContent = s.offline ? ('已降级 · ' + (s.missCount || 0) + ' 次') : '正常';
+  const errBox = $('dError');
+  if (s.lastError) { errBox.hidden = false; errBox.textContent = '写入错误：' + s.lastError; }
+  else errBox.hidden = true;
+}
+function openDetail() {
+  fillDetail();
+  const layer = $('detailLayer');
+  layer.hidden = false;
+  requestAnimationFrame(() => layer.classList.add('is-open'));
+}
+function closeDetail() {
+  const layer = $('detailLayer');
+  layer.classList.remove('is-open');
+  setTimeout(() => { if (!layer.classList.contains('is-open')) layer.hidden = true; }, 460);
+}
+
+/* ── 玻璃停靠栏：图标联动放大 + 滚动定位 ────────────────────── */
+function initDock() {
+  const dock = document.querySelector('.dock');
+  const app = $('app');
+  if (!dock) return;
+  const items = Array.from(dock.querySelectorAll('.dock-item'));
+
+  // 直接算 .app 的滚动位置 —— 浏览器原生的元素滚动方法常因 popup 容器高度受限而“点了不动”
+  function scrollTo(target) {
+    if (!target || !app) return;
+    const det = target.closest && target.closest('details');
+    if (det) det.open = true;
+    const top = Math.max(0, target.offsetTop - app.offsetTop - 8);
+    app.scrollTo({ top: top, behavior: 'smooth' });
+    // 定位反馈：目标卡闪一下描边，让用户明确看到“跳到这里了”
+    target.classList.add('dock-hit');
+    clearTimeout(scrollTo._t);
+    scrollTo._t = setTimeout(() => target.classList.remove('dock-hit'), 900);
+  }
+
+  items.forEach((it, i) => {
+    it.addEventListener('pointerenter', () => {
+      it.classList.add('is-hover');
+      if (items[i - 1]) items[i - 1].classList.add('is-near');
+      if (items[i + 1]) items[i + 1].classList.add('is-near');
+    });
+    it.addEventListener('pointerleave', () => {
+      items.forEach((x) => x.classList.remove('is-hover', 'is-near'));
+    });
+    it.addEventListener('click', () => {
+      if (it.dataset.action === 'test') { $('testBtn').click(); return; }
+      scrollTo($(it.dataset.scroll));
+    });
+  });
+
+  // 滚轮停在浮动的 dock 上时，事件被 dock 吞掉不会滚到 .app —— 显式转发
+  if (app) {
+    dock.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      app.scrollTop += e.deltaY;
+    }, { passive: false });
+  }
+}
+
 /* ── bindings ───────────────────────────────────────────────── */
 $('masterToggle').addEventListener('change', (e) => save({ enabled: e.target.checked }));
 document.querySelectorAll('.seg').forEach((btn) => {
@@ -275,8 +552,38 @@ $('optDns').addEventListener('change', (e) => save({ dnsCheck: e.target.checked 
 $('optDomains').addEventListener('change', (e) => save({ cnDomainList: e.target.checked }));
 $('optFailOpen').addEventListener('change', (e) => save({ failOpen: e.target.checked }));
 $('retryBtn').addEventListener('click', retryNow);
+const updateRulesBtn = $('updateRulesBtn');
+if (updateRulesBtn) updateRulesBtn.addEventListener('click', async () => {
+  const label = $('updateRulesLabel');
+  const original = label ? label.textContent : '';
+  if (updateRulesBtn.disabled) return;
+  updateRulesBtn.disabled = true;
+  if (label) label.textContent = '正在从 APNIC 拉取…';
+  try {
+    const r = await send('updateRules');
+    if (r && r.ok) {
+      if (label) label.textContent = '已更新 · ' + (r.meta && r.meta.v4 || 0) + ' 网段';
+      state = await send('getState');
+      render(state);
+      if (!$('detailLayer').hidden) fillDetail();
+    } else {
+      if (label) label.textContent = '更新失败 · 已保留旧规则';
+    }
+  } catch (_) {
+    if (label) label.textContent = '更新失败 · 已保留旧规则';
+  } finally {
+    setTimeout(() => { if (label) label.textContent = original; updateRulesBtn.disabled = false; }, 2600);
+  }
+});
 $('ipRefreshBtn').addEventListener('click', loadIpInfo);
 $('kernelScanBtn').addEventListener('click', loadKernel);
+$('detailOpenBtn').addEventListener('click', openDetail);
+document.querySelectorAll('[data-detail-close]').forEach((b) => {
+  b.addEventListener('click', closeDetail);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('detailLayer') && !$('detailLayer').hidden) closeDetail();
+});
 
 document.querySelectorAll('[data-add]').forEach((b) => {
   b.addEventListener('click', () => addRule(b.dataset.add));
@@ -298,8 +605,8 @@ document.querySelectorAll('[data-add]').forEach((b) => {
 });
 
 /* ── 吉祥物巡游：跨卡片斜跳（猫步） ───────────────────────────
- * 猫提升到面板层，站点 = 各卡片上边线。每站随机水平落点 + 抛物线上抛，
- * 呈斜向猫步；滚动/卡片显隐/尺寸变化时重新校准，绝不跳到错误位置。
+ * 猫提升到面板层，站点 = 各卡片上边线。每站：蓄力下蹲 → 起跳上抛 → 斜向抛物线
+ * → 落地缓冲。滚动 / 卡片显隐 / 尺寸变化时重校准到「当前站点」，绝不闪回健康卡。
  * 尊重 prefers-reduced-motion：开启则静止趴在健康卡。
  * ───────────────────────────────────────────────────────────── */
 const Mascot = (() => {
@@ -309,66 +616,89 @@ const Mascot = (() => {
 
   const reduced = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const STOPS = ['healthCard', 'kernelCard', 'ipCard'];
-  const CAT_W = 40, CAT_H = 34;
-  let anchorY = 0;        // 猫肚皮相对自身的偏移：SVG y=86.5 / 100 * 34 ≈ 29.4
-  const BELLY = 29;
+  const STOPS = ['healthCard', 'kernelCard', 'trafficCard'];
+  const CAT_W = 40;
+  const BELLY = 29;                 // 肚皮相对自身顶部：SVG y≈86.5/100*34
+  const cards = () => STOPS.map((id) => $(id)).filter(Boolean);
+  let curCard = cards()[0] || null; // 当前停靠站点（重校准时据此归位，不回健康卡）
   let cur = { x: 0, y: 0 };
-  let raf = 0, timer = 0, stopIdx = 0, alive = false;
+  let raf = 0, timer = 0, alive = false;
+  let animating = false;            // 独立布尔标志：不依赖 classList，避免自触发
+  let settleUntil = 0;              // 动画结束冷却：吃掉 remove('is-jumping') 引发的 observer 回调
 
+  // 卡片相对 .app 内容区的布局位置。不能加 scrollTop：猫与卡片同处滚动容器，
+  // 二者随内容一起滚动，相对位置由 offsetTop 决定，加 scrollTop 会双重位移。
   function cardTop(card) {
-    // 卡片相对 app 顶部的距离（含滚动）
-    return card.offsetTop - app.offsetTop + app.scrollTop;
+    return card.offsetTop - app.offsetTop;
   }
   function visible(card) {
     const r = card.getBoundingClientRect();
     const a = app.getBoundingClientRect();
-    return r.bottom > a.top + 4 && r.top < a.bottom - 4;
+    // 底部玻璃 dock 固定悬浮，给可视区下沿留出遮挡余量，猫不落到被 dock 盖住的卡片上
+    const dock = document.querySelector('.dock');
+    const dockReserve = dock ? dock.getBoundingClientRect().height + 18 : 0;
+    return r.bottom > a.top + 6 && r.top < a.bottom - 6 - dockReserve;
   }
   function landing(card) {
     const x = card.offsetLeft + card.offsetWidth - CAT_W - 13 - Math.random() * 46;
-    const y = cardTop(card) - BELLY;      // 肚皮压在卡片上边线
-    return { x: Math.max(4, x), y };
+    return { x: Math.max(4, x), y: cardTop(card) - BELLY };
   }
-  function paint(p, rot, scale) {
+  function paint(p, rot, sx, sy) {
     el.style.setProperty('--mx', p.x + 'px');
     el.style.setProperty('--my', p.y + 'px');
     el.style.setProperty('--mrot', (rot || 0) + 'deg');
-    el.style.setProperty('--msc', scale || 1);
+    el.style.setProperty('--msc', sx || 1);
+    el.style.setProperty('--msy', sy || 1);
   }
 
-  // 抛物线斜跳：水平平滑插值 + 随机倾斜；垂直上抛再落到目标边线
-  function jumpTo(target) {
+  // 蓄力 → 起跳 → 落地缓冲：完整起跳动作都在这条时间轴里
+  function jumpTo(target, card) {
     const from = { ...cur };
     const dx = target.x - from.x;
     const dy = target.y - from.y;
     const dist = Math.hypot(dx, dy);
-    const dur = Math.min(900, 420 + dist * 0.55);       // 距离越远跳越久
-    const lift = Math.min(64, 26 + dist * 0.16);        // 上抛高度
-    // 猫步：水平方向带一点随机弧线偏移，落点右偏/左偏不完全直线
-    const sideBend = (Math.random() * 2 - 1) * Math.min(20, dist * 0.10);
+    const dur = Math.min(1050, 660 + dist * 0.75);   // 距离越远跳越久，动作看得清
+    const lift = Math.min(92, 42 + dist * 0.22);     // 上抛高度：够明显地「先跳起来」
+    const sideBend = (Math.random() * 2 - 1) * Math.min(22, dist * 0.10);
     const tiltDir = dx >= 0 ? 1 : -1;
+    const CROUCH = 0.13;                              // 前 13% 原地蓄力
     const t0 = performance.now();
+    animating = true;
     el.classList.add('is-jumping');
     cancelAnimationFrame(raf);
 
     function frame(now) {
       let t = (now - t0) / dur;
       if (t >= 1) t = 1;
-      // 水平：缓入缓出 + 侧弯（sin 半波）
-      const x = from.x + dx * t + sideBend * Math.sin(Math.PI * t);
-      // 垂直：线性基线 - 抛物线上抛（4t(1-t) 峰值在 t=0.5）
-      const y = from.y + dy * t - lift * 4 * t * (1 - t);
-      // 起跳仰头、落地前爪下探：旋转 + 轻微缩放（腾空放大）
-      const rot = tiltDir * (Math.sin(Math.PI * t) * 13 - 5 * t);
-      const scale = 1 + 0.09 * Math.sin(Math.PI * t);
-      paint({ x, y }, rot, scale);
+
+      if (t < CROUCH) {
+        // 蓄力下蹲：原地压扁、微微后仰，肚皮仍贴边线
+        const k = Math.sin(Math.PI * (t / CROUCH));
+        paint(from, -tiltDir * 4 * k, 1 + 0.06 * k, 1 - 0.11 * k);
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+
+      // 主跳跃：基线 easeInOutQuad + 上抛 sin(πu)^0.8 —— 前段上抛压过基线，
+      // 即使目标在下方很远，也会先明显窜起来再落下（这才是「起跳」）。
+      const u = (t - CROUCH) / (1 - CROUCH);
+      const base = u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u);
+      const arc = Math.pow(Math.sin(Math.PI * u), 0.8);
+      const x = from.x + dx * base + sideBend * Math.sin(Math.PI * u);
+      const y = from.y + dy * base - lift * arc;
+      const rot = tiltDir * 12 * arc;                 // 腾空倾斜
+      const land = Math.sin(Math.PI * Math.max(0, (u - 0.86) / 0.14)); // 落地压扁回弹
+      paint({ x, y }, rot, 1 + 0.10 * arc + 0.05 * land, 1 + 0.10 * arc - 0.09 * land);
+
       if (t < 1) {
         raf = requestAnimationFrame(frame);
       } else {
         cur = { ...target };
-        paint(cur, 0, 1);
+        curCard = card || curCard;
+        paint(cur, 0, 1, 1);
         el.classList.remove('is-jumping');
+        animating = false;
+        settleUntil = performance.now() + 120;  // 冷却：忽略 class 变化回调，杜绝瞬间回弹
       }
     }
     raf = requestAnimationFrame(frame);
@@ -376,43 +706,45 @@ const Mascot = (() => {
 
   function nextStop() {
     if (!alive) return;
-    // 只在可见卡片里选下一站；健康卡始终保留兜底
-    const cards = STOPS.map((id) => $(id)).filter(Boolean);
-    const vis = cards.filter(visible);
-    const pool = vis.length ? vis : cards.slice(0, 1);
-    stopIdx = (stopIdx + 1) % pool.length;
-    jumpTo(landing(pool[stopIdx]));
-    timer = setTimeout(nextStop, 3200 + Math.random() * 1600);
+    const all = cards();
+    const vis = all.filter(visible);
+    const pool = vis.length ? vis : all.slice(0, 1);
+    // 排除当前站点，避免原地蹦；为空（只剩一张可见卡）时就地小跳
+    let candidates = pool.filter((c) => c !== curCard);
+    if (!candidates.length) candidates = pool;
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    jumpTo(landing(target), target);
+    timer = setTimeout(nextStop, 3400 + Math.random() * 1800);
   }
 
   function calibrate() {
-    const cards = STOPS.map((id) => $(id)).filter(Boolean);
-    const first = cards[0];
-    if (!first) return;
-    const base = landing(first);
-    // 只在没跳的过程中归位，避免动画中被打断
-    if (!el.classList.contains('is-jumping')) {
-      cur = { x: base.x, y: base.y };
-      paint(cur, 0, 1);
+    // 重校准到「当前站点」而不是健康卡 —— 否则内核卡上的猫会被拽回起点
+    const card = curCard && curCard.isConnected !== false ? curCard : cards()[0];
+    if (!card) return;
+    if (!animating && !el.classList.contains('is-jumping')) {
+      cur = landing(card);
+      paint(cur, 0, 1, 1);
     }
   }
 
   return {
     start() {
+      curCard = cards()[0] || curCard;
       calibrate();
       if (reduced) return;                 // 静态，不巡游
       alive = true;
-      timer = setTimeout(nextStop, 2600);
+      timer = setTimeout(nextStop, 2800);
       app.addEventListener('scroll', () => {
-        cancelAnimationFrame(raf);
+        // 猫与卡片同处滚动容器，相对位置不变；只重置计时，绝不能 cancelAnimationFrame
         clearTimeout(timer);
-        if (!el.classList.contains('is-jumping')) alive && (timer = setTimeout(nextStop, 900));
-        else alive && (timer = setTimeout(nextStop, 900));
+        if (alive && !animating) timer = setTimeout(nextStop, 1200);
       }, { passive: true });
       window.addEventListener('resize', calibrate);
-      // 卡片显隐（内核安装卡/详情卡展开）后重新校准静止位
       if (window.MutationObserver) {
         new MutationObserver(() => {
+          // 动画中 / 结束冷却期内忽略：remove('is-jumping') 也会触发本回调，
+          // 若此刻 calibrate 就会把刚落地的猫瞬间拉回 —— 正是「跳下去一瞬间回来」的根因。
+          if (animating || performance.now() < settleUntil) return;
           if (!el.classList.contains('is-jumping')) calibrate();
         }).observe(app, { attributes: true, subtree: true, attributeFilter: ['hidden', 'class'] });
       }
@@ -452,7 +784,11 @@ $('testBtn').addEventListener('click', async () => {
   } else {
     await checkProxy();
   }
+  loadRoute();    // 当前页面路由判定：落到健康卡的直连/代理示意条 + logo 灯
+  loadTraffic();  // 流量统计：直连 / 代理分路累计
   loadIpInfo();   // 出口探测独立于健康状态，异步进行不阻塞面板
   loadKernel();   // 内核检测同上
   Mascot.start(); // 吉祥物跨卡片斜跳巡游
+  initSpotlights(); // 聚光卡片鼠标跟随
+  initDock();       // 玻璃停靠栏联动
 })();

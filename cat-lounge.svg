@@ -6,16 +6,21 @@
    动画：尾巴慢摇 2.4s / 睁眼眨眼 4.4s / 呼吸 3.6s。
    尊重系统「减少动态效果」。
    ============================================================ */
-.m-tail   { animation: m-tail 2.4s ease-in-out infinite; }
-.m-blink  { animation: m-blink 4.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-.m-breath { animation: m-breath 3.6s ease-in-out infinite; transform-origin: 60px 88px; }
-.m-ear    { animation: m-ear 4.4s ease-in-out infinite; }
-@keyframes m-tail   { 0%,100% { transform: rotate(-13deg); } 50% { transform: rotate(14deg); } }
-@keyframes m-blink  { 0%,91%,94%,100% { transform: scaleY(1); } 92.5% { transform: scaleY(.08); } }
-@keyframes m-breath { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
-@keyframes m-ear    { 0%,91%,94%,100% { transform: rotate(0); } 92.5% { transform: rotate(-4deg); } }
+.m-tail      { animation: m-tail 2.4s ease-in-out infinite; }
+.m-blink     { animation: m-blink 5.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.m-wink-open { animation: m-wink-open 5.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.m-wink-shut { opacity: 0; animation: m-wink-shut 5.2s ease-in-out infinite; }
+.m-breath    { animation: m-breath 3.6s ease-in-out infinite; transform-origin: 60px 88px; }
+.m-ear       { animation: m-ear 5.2s ease-in-out infinite; }
+@keyframes m-tail       { 0%,100% { transform: rotate(-13deg); } 50% { transform: rotate(14deg); } }
+/* 左眼只在 31% 眨一下，右眼只在 74% wink 一下 —— 相位错开，任何时刻至少一只眼睁开 */
+@keyframes m-blink      { 0%,29%,33%,100% { transform: scaleY(1); } 31% { transform: scaleY(.08); } }
+@keyframes m-wink-open  { 0%,70%,78%,100% { transform: scaleY(1); } 74% { transform: scaleY(.06); } }
+@keyframes m-wink-shut  { 0%,70%,78%,100% { opacity: 0; } 74% { opacity: 1; } }
+@keyframes m-breath     { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.035); } }
+@keyframes m-ear        { 0%,29%,33%,100% { transform: rotate(0); } 31% { transform: rotate(-4deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .m-tail,.m-blink,.m-breath,.m-ear { animation: none !important; }
+  .m-tail,.m-blink,.m-wink-open,.m-wink-shut,.m-breath,.m-ear { animation: none !important; }
 }
 </style>
 
@@ -56,7 +61,11 @@
       <ellipse cx="202" cy="265" rx="24" ry="32" fill="#0D285C" stroke="none"/>
       <ellipse cx="193" cy="252" rx="7" ry="10" fill="white" stroke="none"/>
     </g>
-    <path d="M297 268 Q326 232 351 263" fill="none" stroke-width="15"/>
+    <g class="m-wink-open">
+      <ellipse cx="324" cy="264" rx="23" ry="31" fill="#0D285C" stroke="none"/>
+      <ellipse cx="315" cy="251" rx="6.5" ry="9.5" fill="white" stroke="none"/>
+    </g>
+    <path class="m-wink-shut" d="M309 264 Q324 247 340 263" fill="none" stroke-width="12" stroke-linecap="round"/>
     <ellipse cx="151" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
     <ellipse cx="363" cy="305" rx="25" ry="13" fill="#FFB7BA" stroke="none"/>
     <path d="M247 284 Q256 279 265 284 Q256 295 247 284Z" fill="#0D285C" stroke="none"/>
