@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "智路 · CN 智能分流代理",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "中国网址与 IP 直连，海外流量全部走代理。由 Chrome 内置 PAC 接管，不依赖 Clash 的系统代理开关。",
   "minimum_chrome_version": "110",
   "permissions": [
@@ -12,7 +12,7 @@
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*",
-    "https://ipinfo.io/*",
+    "https://www.cloudflare.com/*",
     "https://myip.ipip.net/*"
   ],
   "background": {

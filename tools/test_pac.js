@@ -46,12 +46,11 @@ const chromeStub = {
   }
 };
 
-// 探测桩：ipinfo.io 返回日本出口，myip.ipip.net 返回深圳本机
+// 探测桩：Cloudflare trace 返回日本出口（NRT 东京），myip.ipip.net 返回深圳本机
 const fetchStub = async (url) => {
-  if (String(url).indexOf('ipinfo.io') >= 0) {
+  if (String(url).indexOf('cloudflare.com/cdn-cgi/trace') >= 0) {
     return { ok: true, status: 200,
-      text: async () => JSON.stringify({ ip: '198.51.100.77', city: 'Tokyo', region: 'Tokyo',
-        country: 'JP', org: 'AS2516 KDDI CORPORATION' }) };
+      text: async () => 'fl=408f307\nh=www.cloudflare.com\nip=198.51.100.77\ncolo=NRT\nloc=JP\nwarp=off\n' };
   }
   if (String(url).indexOf('myip.ipip.net') >= 0) {
     return { ok: true, status: 200,
@@ -149,6 +148,7 @@ else console.log('PASS  .cn 域名在 DNS 之前命中，未触发查询');
     // IP 双通道探测：出口 JP / 本机 CN 应判为「代理已生效」
     const info = await ctx.ipInfo();
     const ipOk = info.exit.ip === '198.51.100.77' && info.exit.countryZh === '日本' &&
+      info.exit.city === '东京' && info.exit.colo === 'NRT' &&
       info.local.ip === '203.0.113.45' && /已真实生效/.test(info.verdict);
     if (!ipOk) { console.log('FAIL  IP 双通道探测判定错误: ' + JSON.stringify(info)); fail++; }
     else console.log(`PASS  IP 双通道探测 (出口 ${info.exit.ip}/${info.exit.countryZh} · 本机 ${info.local.ip} · ${info.verdict})`);

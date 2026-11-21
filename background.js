@@ -338,7 +338,8 @@ async function clashStatus(cfg) {
 
 /* ------------------------------------------------------ IP / region --- */
 /* 双通道探测：
- *  - 代理出口：请求海外服务 ipinfo.io —— PAC 判为海外 → 走代理 → 得到出口 IP/地区/运营商
+ *  - 代理出口：请求 Cloudflare 的 cdn-cgi/trace（不限流、无需 key）—— PAC 判为海外 → 走代理
+ *    → 返回出口 ip / loc(国家) / colo(机场代码)。原用 ipinfo.io 免费额度对共享出口常 429，已弃用。
  *  - 本机真实：请求国内服务 myip.ipip.net —— PAC 判为国内 → 直连 → 得到本机公网 IP/地区
  * 两个请求都经过 Chrome 网络栈，因此结果就是「用户当前实际的分流效果」，不是理论值。 */
 const COUNTRY_ZH = {
@@ -358,6 +359,12 @@ function orgShort(org) {
   if (!org) return '';
   return String(org).replace(/^AS\d+\s*/i, '').replace(/\s*Co\.,?\s*Ltd\.?/gi, '').slice(0, 44);
 }
+// Cloudflare 机场代码 → 城市（常见节点，未列出的直接显示代码）
+const CF_COLO = {
+  NRT: '东京', HND: '东京', KIX: '大阪', ICN: '首尔', SIN: '新加坡', HKG: '中国香港',
+  TPE: '中国台湾', LAX: '洛杉矶', SFO: '旧金山', SEA: '西雅图', ORD: '芝加哥', JFK: '纽约',
+  LHR: '伦敦', CDG: '巴黎', FRA: '法兰克福', AMS: '阿姆斯特丹', SYD: '悉尼', MEL: '墨尔本'
+};
 async function fetchText(url, timeoutMs) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs || 8000);
@@ -369,16 +376,25 @@ async function fetchText(url, timeoutMs) {
 }
 async function detectProxyExit() {
   try {
-    const txt = await fetchText('https://ipinfo.io/json', 9000);
-    const j = JSON.parse(txt);
-    if (!j.ip) throw new Error('no ip in response');
+    // Cloudflare trace：纯文本 key=value，无限流、无需 API key
+    const txt = await fetchText('https://www.cloudflare.com/cdn-cgi/trace', 9000);
+    const kv = {};
+    txt.split('\n').forEach((line) => {
+      const i = line.indexOf('=');
+      if (i > 0) kv[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    });
+    const ip = kv.ip || '';
+    if (!ip) throw new Error('no ip in cloudflare trace');
+    const country = kv.loc || '';
+    const colo = kv.colo || '';
+    const city = CF_COLO[colo] || colo || '';
     return {
-      ok: true, ip: j.ip,
-      country: j.country || '',
-      countryZh: countryZh(j.country),
-      region: j.region || '', city: j.city || '',
-      org: orgShort(j.org),
-      place: [countryZh(j.country), j.region, j.city].filter(Boolean).join(' · ') || '—'
+      ok: true, ip: ip,
+      country: country,
+      countryZh: countryZh(country),
+      region: '', city: city,
+      org: '', colo: colo,
+      place: [countryZh(country), city].filter(Boolean).join(' · ') || '—'
     };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
