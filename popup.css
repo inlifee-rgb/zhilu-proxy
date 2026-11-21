@@ -60,9 +60,9 @@ body {
   background: linear-gradient(132deg, #f3f8ff 0%, #fafcff 52%, #f7f4ff 100%);
   transition: border-color .2s, background .2s;
 }
-/* 趴-edge 小猫：前爪搭在健康卡上边线，尾巴慢摇 + 眨眼，不遮挡状态文字 */
+/* 趴-edge 小猫：肚皮压在健康卡上边线，前爪垂到线下方扣住边缘，尾巴慢摇 + 眨眼 */
 .mascot {
-  position: absolute; top: -17px; right: 13px;
+  position: absolute; top: -29px; right: 13px;
   width: 40px; height: 34px; z-index: 2;
   pointer-events: none; user-select: none;
   filter: drop-shadow(0 3px 4px rgba(13, 40, 92, .14));

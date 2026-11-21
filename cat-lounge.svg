@@ -39,10 +39,10 @@
   <path d="M31 80 q-7 3 -11 0 q-1 -5 4 -6 l9 -1Z"
         fill="#fff" stroke="#0D285C" stroke-width="2.6" stroke-linejoin="round"/>
 
-  <!-- 前爪：搭在卡片上边线的两只小爪 -->
-  <path d="M72 81 q7 5 13 2 q2 -5 -3 -7 l-9 -3Z"
+  <!-- 前爪：垂到边线下方，做出扣住卡片边缘的趴姿 -->
+  <path d="M70 80 C70 89 71 94 76 94 C81 94 82 89 81 80 Z"
         fill="#fff" stroke="#0D285C" stroke-width="2.6" stroke-linejoin="round"/>
-  <path d="M80 83 q6 4 11 1 q1 -5 -4 -6 l-8 -2Z"
+  <path d="M80 81 C80 91 81 95 86 95 C91 95 92 90 91 81 Z"
         fill="#fff" stroke="#0D285C" stroke-width="2.4" stroke-linejoin="round"/>
 
   <!-- 头：真实 MIAO 素材，放大到适合趴姿的比例 -->
