@@ -27,7 +27,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app { padding: 16px 18px 14px; max-height: 600px; overflow-y: auto; }
+.app { position: relative; padding: 16px 18px 14px; max-height: 600px; overflow-y: auto; }
 .app::-webkit-scrollbar { width: 6px; }
 .app::-webkit-scrollbar-thumb { background: #dce4ee; border-radius: 6px; }
 .app::-webkit-scrollbar-track { background: transparent; }
@@ -60,13 +60,18 @@ body {
   background: linear-gradient(132deg, #f3f8ff 0%, #fafcff 52%, #f7f4ff 100%);
   transition: border-color .2s, background .2s;
 }
-/* 趴-edge 小猫：肚皮压在健康卡上边线，前爪垂到线下方扣住边缘，尾巴慢摇 + 眨眼 */
+/* 趴边小猫：提升到面板层，JS 驱动在卡片间斜跳；初始位置由 JS 设置 */
 .mascot {
-  position: absolute; top: -29px; right: 13px;
-  width: 40px; height: 34px; z-index: 2;
+  position: absolute; top: 0; left: 0;
+  width: 40px; height: 34px; z-index: 6;
   pointer-events: none; user-select: none;
   filter: drop-shadow(0 3px 4px rgba(13, 40, 92, .14));
+  /* 位移用 transform（GPU 合成，不触发重排）；JS 写 --mx/--my，跳跃时加旋转缩放 */
+  transform: translate3d(var(--mx, 280px), var(--my, 20px), 0) rotate(var(--mrot, 0deg)) scale(var(--msc, 1));
+  transition: none;
+  will-change: transform;
 }
+.mascot.is-jumping { filter: drop-shadow(0 8px 5px rgba(13, 40, 92, .20)); }
 .health-warn { border-color: #fde68a; background: linear-gradient(132deg, #fffbeb 0%, #fffdf7 100%); }
 .health-err { border-color: #fecaca; background: linear-gradient(132deg, #fef2f2 0%, #fffafa 100%); }
 .health-off { border-color: #e5e7eb; background: #f8fafc; }

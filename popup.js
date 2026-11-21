@@ -297,6 +297,130 @@ document.querySelectorAll('[data-add]').forEach((b) => {
   });
 });
 
+/* ── 吉祥物巡游：跨卡片斜跳（猫步） ───────────────────────────
+ * 猫提升到面板层，站点 = 各卡片上边线。每站随机水平落点 + 抛物线上抛，
+ * 呈斜向猫步；滚动/卡片显隐/尺寸变化时重新校准，绝不跳到错误位置。
+ * 尊重 prefers-reduced-motion：开启则静止趴在健康卡。
+ * ───────────────────────────────────────────────────────────── */
+const Mascot = (() => {
+  const el = $('mascot');
+  const app = document.querySelector('.app');
+  if (!el || !app) return { start() {}, recalibrate() {} };
+
+  const reduced = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const STOPS = ['healthCard', 'kernelCard', 'ipCard'];
+  const CAT_W = 40, CAT_H = 34;
+  let anchorY = 0;        // 猫肚皮相对自身的偏移：SVG y=86.5 / 100 * 34 ≈ 29.4
+  const BELLY = 29;
+  let cur = { x: 0, y: 0 };
+  let raf = 0, timer = 0, stopIdx = 0, alive = false;
+
+  function cardTop(card) {
+    // 卡片相对 app 顶部的距离（含滚动）
+    return card.offsetTop - app.offsetTop + app.scrollTop;
+  }
+  function visible(card) {
+    const r = card.getBoundingClientRect();
+    const a = app.getBoundingClientRect();
+    return r.bottom > a.top + 4 && r.top < a.bottom - 4;
+  }
+  function landing(card) {
+    const x = card.offsetLeft + card.offsetWidth - CAT_W - 13 - Math.random() * 46;
+    const y = cardTop(card) - BELLY;      // 肚皮压在卡片上边线
+    return { x: Math.max(4, x), y };
+  }
+  function paint(p, rot, scale) {
+    el.style.setProperty('--mx', p.x + 'px');
+    el.style.setProperty('--my', p.y + 'px');
+    el.style.setProperty('--mrot', (rot || 0) + 'deg');
+    el.style.setProperty('--msc', scale || 1);
+  }
+
+  // 抛物线斜跳：水平平滑插值 + 随机倾斜；垂直上抛再落到目标边线
+  function jumpTo(target) {
+    const from = { ...cur };
+    const dx = target.x - from.x;
+    const dy = target.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    const dur = Math.min(900, 420 + dist * 0.55);       // 距离越远跳越久
+    const lift = Math.min(64, 26 + dist * 0.16);        // 上抛高度
+    // 猫步：水平方向带一点随机弧线偏移，落点右偏/左偏不完全直线
+    const sideBend = (Math.random() * 2 - 1) * Math.min(20, dist * 0.10);
+    const tiltDir = dx >= 0 ? 1 : -1;
+    const t0 = performance.now();
+    el.classList.add('is-jumping');
+    cancelAnimationFrame(raf);
+
+    function frame(now) {
+      let t = (now - t0) / dur;
+      if (t >= 1) t = 1;
+      // 水平：缓入缓出 + 侧弯（sin 半波）
+      const x = from.x + dx * t + sideBend * Math.sin(Math.PI * t);
+      // 垂直：线性基线 - 抛物线上抛（4t(1-t) 峰值在 t=0.5）
+      const y = from.y + dy * t - lift * 4 * t * (1 - t);
+      // 起跳仰头、落地前爪下探：旋转 + 轻微缩放（腾空放大）
+      const rot = tiltDir * (Math.sin(Math.PI * t) * 13 - 5 * t);
+      const scale = 1 + 0.09 * Math.sin(Math.PI * t);
+      paint({ x, y }, rot, scale);
+      if (t < 1) {
+        raf = requestAnimationFrame(frame);
+      } else {
+        cur = { ...target };
+        paint(cur, 0, 1);
+        el.classList.remove('is-jumping');
+      }
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function nextStop() {
+    if (!alive) return;
+    // 只在可见卡片里选下一站；健康卡始终保留兜底
+    const cards = STOPS.map((id) => $(id)).filter(Boolean);
+    const vis = cards.filter(visible);
+    const pool = vis.length ? vis : cards.slice(0, 1);
+    stopIdx = (stopIdx + 1) % pool.length;
+    jumpTo(landing(pool[stopIdx]));
+    timer = setTimeout(nextStop, 3200 + Math.random() * 1600);
+  }
+
+  function calibrate() {
+    const cards = STOPS.map((id) => $(id)).filter(Boolean);
+    const first = cards[0];
+    if (!first) return;
+    const base = landing(first);
+    // 只在没跳的过程中归位，避免动画中被打断
+    if (!el.classList.contains('is-jumping')) {
+      cur = { x: base.x, y: base.y };
+      paint(cur, 0, 1);
+    }
+  }
+
+  return {
+    start() {
+      calibrate();
+      if (reduced) return;                 // 静态，不巡游
+      alive = true;
+      timer = setTimeout(nextStop, 2600);
+      app.addEventListener('scroll', () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+        if (!el.classList.contains('is-jumping')) alive && (timer = setTimeout(nextStop, 900));
+        else alive && (timer = setTimeout(nextStop, 900));
+      }, { passive: true });
+      window.addEventListener('resize', calibrate);
+      // 卡片显隐（内核安装卡/详情卡展开）后重新校准静止位
+      if (window.MutationObserver) {
+        new MutationObserver(() => {
+          if (!el.classList.contains('is-jumping')) calibrate();
+        }).observe(app, { attributes: true, subtree: true, attributeFilter: ['hidden', 'class'] });
+      }
+    },
+    recalibrate: calibrate
+  };
+})();
+
 $('testBtn').addEventListener('click', async () => {
   const btn = $('testBtn');
   const out = $('testResult');
@@ -330,4 +454,5 @@ $('testBtn').addEventListener('click', async () => {
   }
   loadIpInfo();   // 出口探测独立于健康状态，异步进行不阻塞面板
   loadKernel();   // 内核检测同上
+  Mascot.start(); // 吉祥物跨卡片斜跳巡游
 })();

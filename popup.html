@@ -9,6 +9,11 @@
 <body>
   <div class="app">
 
+    <!-- 吉祥物：提升到面板层，可跨卡片斜跳穿梭 -->
+    <div id="mascotWrap" class="mascot-wrap" aria-hidden="true">
+      <img id="mascot" class="mascot" src="cat-lounge.svg" alt="智路猫">
+    </div>
+
     <!-- ── Header ───────────────────────────────────────────── -->
     <header class="header">
       <div class="brand-mark" aria-hidden="true">
@@ -31,7 +36,6 @@
 
     <!-- ── Health card: 唯一状态来源，合并原先三个互相打架的提示条 ── -->
     <section id="healthCard" class="health health-ok">
-      <img id="mascot" class="mascot" src="cat-lounge.svg" alt="智路猫" aria-hidden="true">
       <div class="health-main">
         <div class="health-icon" id="healthIcon">
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17l9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -96,7 +100,7 @@
     </div>
 
     <!-- ── IP / region: 双通道实测出口，最直观的"到底走没走代理"证据 ── -->
-    <section class="block ip-block">
+    <section id="ipCard" class="block ip-block">
       <div class="section-label row">
         <span>网络出口 · 实时探测</span>
         <button id="ipRefreshBtn" class="btn-link" type="button" title="重新探测">
@@ -182,7 +186,7 @@
 
     <footer class="footer">
       <span>数据源：APNIC · 2026-11-21</span>
-      <span id="versionTag">v1.2.3</span>
+      <span id="versionTag">v1.3.0</span>
     </footer>
   </div>
   <script src="popup.js"></script>
