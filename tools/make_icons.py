@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Generate extension PNG icons from the REAL MIAO brand SVG, stdlib only.
 
-Rasterizes SVG <path> data (M/L/C/Q/Z, absolute+relative, transform=translate/scale)
+Rasterizes SVG <path> (M/L/C/Q/Z, absolute+relative) AND <ellipse>/<circle>
 with a scanline fill + disk stroke on a supersampled canvas, then box-downsamples
 to 16/32/48/128 PNG. No Pillow / cairosvg needed — pure Python standard library.
+
+Note: <ellipse> matters — the MIAO logo's OPEN eye, eye highlight and blush are
+ellipses. Older versions only handled <path>, which dropped the open eye and made
+the logo look closed-eyed. Fixed 2026-11-21.
 
 Source: tools/brand/miao-app-icon.svg (vendored copy of MIAO brand asset)
 """
@@ -22,10 +26,16 @@ SS = 4                 # supersample factor
 N = 128 * SS           # 512x512 master canvas (SVG viewBox is 512)
 
 # ---------- color ----------
+NAMED_COLORS = {
+    "white": "#FFFFFF", "black": "#000000", "red": "#FF0000",
+    "transparent": "none",
+}
+
 def hexcolor(s: str):
     if not s or s == "none":
         return None
-    s = s.strip().lstrip("#")
+    s = s.strip()
+    s = NAMED_COLORS.get(s.lower(), s).lstrip("#")
     if len(s) == 3:
         s = "".join(c * 2 for c in s)
     if len(s) == 8:
@@ -150,6 +160,20 @@ def collect_paths(svg_path: Path):
             out = dict(attrs)
             out["d"] = elem.attrib["d"]
             shapes.append(out)
+        elif elem.tag.endswith("ellipse"):
+            out = dict(attrs)
+            out["_ellipse"] = (
+                float(elem.attrib.get("cx", 0)), float(elem.attrib.get("cy", 0)),
+                float(elem.attrib.get("rx", 0)), float(elem.attrib.get("ry", 0)),
+            )
+            shapes.append(out)
+        elif elem.tag.endswith("circle"):
+            r = float(elem.attrib.get("r", 0))
+            out = dict(attrs)
+            out["_ellipse"] = (
+                float(elem.attrib.get("cx", 0)), float(elem.attrib.get("cy", 0)), r, r,
+            )
+            shapes.append(out)
         for ch in elem:
             walk(ch, attrs)
     walk(root, {})
@@ -163,6 +187,32 @@ def apply_transform(points, transform):
     tx, ty = (float(m.group(1)), float(m.group(2))) if m else (0.0, 0.0)
     sx, sy = (float(s.group(1)), float(s.group(2) or s.group(1))) if s else (1.0, 1.0)
     return [(x * sx + tx, y * sy + ty) for (x, y) in points]
+
+# Ellipse -> closed point ring via 4 cubic Beziers (kappa approximation).
+KAPPA = 0.5522847498307936
+
+def ellipse_points(cx, cy, rx, ry, steps=24):
+    """Sample an ellipse outline into a closed ring of points."""
+    if rx <= 0 or ry <= 0:
+        return []
+    k = KAPPA
+    # 4 quadrant cubic segments in absolute coords
+    segs = [
+        ((cx + rx, cy), (cx + rx, cy + k * ry), (cx + k * rx, cy + ry), (cx, cy + ry)),
+        ((cx, cy + ry), (cx - k * rx, cy + ry), (cx - rx, cy + k * ry), (cx - rx, cy)),
+        ((cx - rx, cy), (cx - rx, cy - k * ry), (cx - k * rx, cy - ry), (cx, cy - ry)),
+        ((cx, cy - ry), (cx + k * rx, cy - ry), (cx + rx, cy - k * ry), (cx + rx, cy)),
+    ]
+    out = []
+    for p0, p1, p2, p3 in segs:
+        for n in range(1, steps + 1):
+            t = n / steps
+            u = 1 - t
+            out.append((
+                u**3 * p0[0] + 3 * u*u*t * p1[0] + 3 * u*t*t * p2[0] + t**3 * p3[0],
+                u**3 * p0[1] + 3 * u*u*t * p1[1] + 3 * u*t*t * p2[1] + t**3 * p3[1],
+            ))
+    return out
 
 # ---------- raster primitives ----------
 def setpx(px, x, y, color):
@@ -248,8 +298,12 @@ def main():
     scale = N / vb[2] if vb[2] else 1.0
     count = 0
     for sh in shapes:
-        subs = parse_path(sh["d"])
-        subs = [apply_transform(p, sh.get("transform")) for p in subs]
+        if "_ellipse" in sh:
+            ring = ellipse_points(*sh["_ellipse"])
+            subs = [apply_transform(ring, sh.get("transform"))] if ring else []
+        else:
+            subs = parse_path(sh["d"])
+            subs = [apply_transform(p, sh.get("transform")) for p in subs]
         # scale from viewBox units to canvas pixels
         subs = [[(x*scale, y*scale) for (x, y) in p] for p in subs]
         fill_c = hexcolor(sh.get("fill", "#000000"))
