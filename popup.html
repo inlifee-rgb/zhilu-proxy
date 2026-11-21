@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=420, initial-scale=1">
+  <title>智路 · CN 智能分流</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Header ───────────────────────────────────────────── -->
+    <header class="header">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="9.2" stroke="white" stroke-width="1.9" opacity=".95"/>
+          <path d="M6.9 16h18.2M16 6.8c2.8 3 4.2 6.6 4.2 9.2S18.8 22.2 16 25.2c-2.8-3-4.2-6.6-4.2-9.2S13.2 9.8 16 6.8Z" stroke="white" stroke-width="1.7" stroke-linecap="round"/>
+          <path d="M4.5 23.5 11 17l4 4 12-12" stroke="#BFDBFE" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">智路 <span>CN 智能分流</span></div>
+        <div class="brand-sub">中国直连 · 海外代理 · 独立接管 Chrome</div>
+      </div>
+      <span id="statusChip" class="chip chip-on">运行中</span>
+    </header>
+
+    <!-- ── Health card: 唯一状态来源，合并原先三个互相打架的提示条 ── -->
+    <section id="healthCard" class="health health-ok">
+      <div class="health-main">
+        <div class="health-icon" id="healthIcon">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17l9-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="health-copy">
+          <div id="healthTitle" class="health-title">分流正常</div>
+          <div id="healthSub" class="health-sub">Chrome 流量已由扩展接管</div>
+        </div>
+        <label class="switch" title="总开关">
+          <input id="masterToggle" type="checkbox" checked>
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+        </label>
+      </div>
+
+      <div class="route" aria-label="分流逻辑示意">
+        <div class="route-node route-cn">
+          <span class="dot dot-green"></span>
+          <span>中国域名 / IP</span>
+          <strong>直连</strong>
+        </div>
+        <div class="route-line"><svg viewBox="0 0 24 12" fill="none"><path d="M2 6h18m-5-4 5 4-5 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="route-node route-os">
+          <span class="dot dot-blue"></span>
+          <span>海外域名 / IP</span>
+          <strong>走代理</strong>
+        </div>
+      </div>
+
+      <div id="healthDetail" class="health-detail" hidden>
+        <span id="healthDetailText"></span>
+        <button id="retryBtn" class="btn btn-mini" type="button">重新接管</button>
+      </div>
+
+      <div class="health-foot">
+        <span class="kv"><i>Chrome 实际模式</i><b id="actualMode">读取中…</b></span>
+        <span class="kv"><i>规则覆盖</i><b id="coverage">—</b></span>
+        <span class="kv"><i>代理端口</i><b id="proxyStateText">检测中</b></span>
+      </div>
+    </section>
+
+    <!-- ── IP / region: 双通道实测出口，最直观的"到底走没走代理"证据 ── -->
+    <section class="block ip-block">
+      <div class="section-label row">
+        <span>网络出口 · 实时探测</span>
+        <button id="ipRefreshBtn" class="btn-link" type="button" title="重新探测">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M16 10a6 6 0 1 1-1.8-4.3M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          刷新
+        </button>
+      </div>
+      <div class="ip-grid">
+        <div class="ip-cell ip-exit">
+          <div class="ip-cap"><span class="dot dot-blue"></span>代理出口</div>
+          <div id="exitIp" class="ip-value">检测中</div>
+          <div id="exitPlace" class="ip-place">—</div>
+          <div id="exitOrg" class="ip-org"></div>
+        </div>
+        <div class="ip-cell ip-local">
+          <div class="ip-cap"><span class="dot dot-green"></span>本机真实</div>
+          <div id="localIp" class="ip-value">检测中</div>
+          <div id="localPlace" class="ip-place">—</div>
+          <div id="localOrg" class="ip-org">直连出口</div>
+        </div>
+      </div>
+      <div id="ipVerdict" class="ip-verdict">正在探测出口与本机 IP…</div>
+    </section>
+
+    <!-- ── Mode ─────────────────────────────────────────────── -->
+    <section class="block">
+      <div class="section-label">分流模式</div>
+      <div class="segment" role="group" aria-label="分流模式">
+        <button class="seg is-active" data-mode="smart">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h9M3 15h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15" cy="10" r="2.1" fill="currentColor"/></svg>
+          智能分流
+        </button>
+        <button class="seg" data-mode="direct">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          全部直连
+        </button>
+        <button class="seg" data-mode="allproxy">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="4" width="14" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M7 10h6m-2-2 2 2-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          全部代理
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Endpoint ─────────────────────────────────────────── -->
+    <section class="block">
+      <div class="section-label row">
+        <span>代理入口</span>
+        <span id="proxyDotText" class="mini-state"><span id="proxyDot" class="dot dot-gray"></span>检测中</span>
+      </div>
+      <div class="endpoint">
+        <input id="proxyHost" class="input host" type="text" spellcheck="false" aria-label="代理主机" value="127.0.0.1">
+        <span class="colon">:</span>
+        <input id="proxyPort" class="input port" type="number" min="1" max="65535" aria-label="代理端口" value="7897">
+        <button id="testBtn" class="btn btn-primary" type="button">测试连通</button>
+      </div>
+      <div id="testResult" class="hint" hidden></div>
+    </section>
+
+    <!-- ── Rules ────────────────────────────────────────────── -->
+    <details class="block fold">
+      <summary class="section-label fold-summary">自定义规则 <span class="fold-count" id="ruleCount">0</span><span class="fold-caret">⌄</span></summary>
+      <div class="rule-row">
+        <span class="rule-tag tag-green">强制直连</span>
+        <input id="directInput" class="input rule-input" type="text" spellcheck="false" placeholder="域名后回车，如 company.com">
+        <button class="btn btn-add" data-add="direct" type="button" aria-label="添加直连域名">+</button>
+      </div>
+      <div id="directChips" class="chips"></div>
+      <div class="rule-row">
+        <span class="rule-tag tag-violet">强制代理</span>
+        <input id="proxyInput" class="input rule-input" type="text" spellcheck="false" placeholder="域名后回车，如 netflix.com">
+        <button class="btn btn-add" data-add="proxy" type="button" aria-label="添加代理域名">+</button>
+      </div>
+      <div id="proxyChips" class="chips"></div>
+    </details>
+
+    <!-- ── Advanced ─────────────────────────────────────────── -->
+    <details class="block fold">
+      <summary class="section-label fold-summary">高级选项 <span class="fold-caret">⌄</span></summary>
+      <label class="opt"><input id="optDns" type="checkbox"><span class="opt-box"></span><span><b>DNS 解析判定</b><small>解析域名 IP，命中中国网段即直连</small></span></label>
+      <label class="opt"><input id="optDomains" type="checkbox"><span class="opt-box"></span><span><b>内置中国域名库</b><small>.cn 后缀 + 常用中国站点，优先直连</small></span></label>
+      <label class="opt"><input id="optFailOpen" type="checkbox"><span class="opt-box"></span><span><b>代理离线自动直连</b><small>Clash 没开也不会断网</small></span></label>
+    </details>
+
+    <footer class="footer">
+      <span>数据源：APNIC · 2026-11-21</span>
+      <span id="versionTag">v1.1.0</span>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

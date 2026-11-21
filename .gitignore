@@ -1,0 +1,14 @@
+# 从 APNIC 下载的原始数据缓存（可由 tools/build_cn_data.py 重新生成，体积大）
+tools/apnic-cn-lines.txt
+tools/cn-ranges-v4.txt
+tools/cn-ranges-v6.txt
+
+# 静态预览页：含模拟数据，仅本地调试用（正式扩展不需要）
+preview.html
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
