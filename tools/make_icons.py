@@ -382,10 +382,10 @@ def add_status_dot(px, color_hex):
     # Cat head was enlarged to zoom=1.5, so its right cheek reaches ~0.89N.
     # Move the dot toward the very corner and slim it so it no longer covers
     # the cheek, while the colored core stays ~1.8px at 16px (still legible).
-    cx, cy = N * 0.85, N * 0.85          # bottom-right corner, clear of the face
-    r_outer = N * 0.15                   # dark outline radius
-    r_white = N * 0.133                  # white ring radius
-    r_color = N * 0.110                  # color radius (~1.8px at 16px)
+    cx, cy = N * 0.82, N * 0.82          # 圆点整体落在画布内（0.85+0.15 会被边缘裁掉半个）
+    r_outer = N * 0.145                  # dark outline radius
+    r_white = N * 0.128                  # white ring radius
+    r_color = N * 0.104                  # color radius (~1.7px at 16px)
     disk(px, cx, cy, r_outer, (13, 40, 92, 255))    # dark keep-out edge
     disk(px, cx, cy, r_white, (255, 255, 255, 255)) # white ring
     disk(px, cx, cy, r_color, color)                # status color

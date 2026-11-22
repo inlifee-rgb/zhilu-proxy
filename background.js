@@ -237,10 +237,13 @@ function buildPac(cfg) {
     'var OPT = ' + JSON.stringify({ local: true, dns: !!cfg.dnsCheck, domains: !!cfg.cnDomainList }) + ';',
     PAC_BODY
   ];
-  // Chrome 强制 pacScript.data 为纯 ASCII：中文注释/域名一律转成 \uXXXX 转义
-  return lines.join('\n').replace(/[^\x00-\x7F]/g, (ch) => {
-    return '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0');
-  });
+  // Chrome 强制 pacScript.data 为纯 ASCII：中文注释/域名一律转成 \uXXXX 转义。
+  // 规则库与模板通常全 ASCII，先 test 短路，避免每次生成都对 115KB 做全量 replace
+  // 并构造一个新字符串（冷启动/改模式时的可观开销）。
+  const raw = lines.join('\n');
+  return /[^\x00-\x7F]/.test(raw)
+    ? raw.replace(/[^\x00-\x7F]/g, (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'))
+    : raw;
 }
 
 /* -------------------------------------- 当前页面路由判定（与 PAC 同规则） --- */
@@ -437,33 +440,60 @@ const ICON_PATHS = {
   error:   { 16: 'icons/icon-error-16.png', 32: 'icons/icon-error-32.png', 48: 'icons/icon-error-48.png', 128: 'icons/icon-error-128.png' }
 };
 let lastIconKind = '';
-function badgeDot(kind) {
+let lastActualMode = 'unknown';   // 上次成功读到的代理模式：proxy 读取超时时兜底
+function badgeDot(kind, force) {
   // 清掉旧的 badge 文字（旧版本可能留下 CN / ●，必须抹掉）
   try { chrome.action.setBadgeText({ text: '' }); } catch (_) {}
-  if (kind === lastIconKind) return;
+  if (!force && kind === lastIconKind) return;
   lastIconKind = kind;
   try { chrome.action.setIcon({ path: ICON_PATHS[kind] || ICON_PATHS.unknown }); }
   catch (e) { /* 图标切换失败不影响代理主功能 */ }
 }
 
+/* 取当前活动标签。SW 刚唤醒的那一瞬间 chrome.tabs 往往还没就绪：
+ * 直接 query({active,currentWindow}) 可能返回空数组，于是被当成「无法判定」
+ * 刷成灰点——而 16px 下灰点几乎看不见，表现就是「状态灯没了」。
+ * 这里按窗口维度逐级退让，确保拿到真实标签。 */
+async function activeTab() {
+  const tries = [
+    { active: true, currentWindow: true },
+    { active: true, lastFocusedWindow: true },
+    { active: true }
+  ];
+  for (const q of tries) {
+    try {
+      const tabs = await chrome.tabs.query(q);
+      if (tabs && tabs[0]) return tabs[0];
+    } catch (_) { /* 继续下一档 */ }
+  }
+  return null;
+}
+
 /* 读当前活动标签的 host，用与 PAC 同源的 classifyHost 判定后刷新角标。
  * 完全防御性：任何一步失败只落灰点，绝不影响代理主功能。 */
-async function refreshRouteBadge() {
+async function refreshRouteBadge(opts) {
+  const force = !!(opts && opts.force);
+  const retry = (opts && opts.retry) || 0;
   try {
     const cfg = cachedCfg || await getCfg();
-    if (!cfg || !cfg.enabled) { badgeDot('off'); return; }
-    const tabs = (chrome.tabs && chrome.tabs.query)
-      ? await chrome.tabs.query({ active: true, currentWindow: true }) : null;
-    const tab = tabs && tabs[0];
+    if (!cfg || !cfg.enabled) { badgeDot('off', force); return; }
+    const tab = await activeTab();
     const url = (tab && (tab.url || tab.pendingUrl)) || '';
+    // 拿不到标签地址（SW 刚醒 / 窗口还没就绪）：这次先不动灯，短延迟重试。
+    // 绝不能在「查不到」时刷成灰点——16px 下灰点几乎不可见，观感就是灯丢了。
+    if (!url) {
+      if (retry < 3) setTimeout(() => refreshRouteBadge({ force, retry: retry + 1 }), 300);
+      else badgeDot('unknown', force);
+      return;
+    }
     let host = '';
-    if (url && /^https?:\/\//i.test(url)) {
+    if (/^https?:\/\//i.test(url)) {
       try { host = new URL(url).hostname; } catch (_) { host = ''; }
     }
     const d = host ? classifyHost(host, cfg) : null;
-    badgeDot(!d ? 'unknown' : d.decision);
+    badgeDot(d ? d.decision : 'unknown', force);
   } catch (_) {
-    badgeDot('unknown');
+    badgeDot('unknown', force);
   }
 }
 
@@ -500,6 +530,14 @@ function proxyCall(method, details) {
 function proxySet(value) { return proxyCall('set', { value: value }); }
 function proxyClear() { return proxyCall('clear', {}); }
 function proxyGet() { return proxyCall('get', {}); }
+
+/* 配置期望的 Chrome 代理模式（用于冷启动快速比对，避免无谓重写 PAC）。 */
+function expectMode(cfg) {
+  if (!cfg || !cfg.enabled) return 'system';
+  if (cfg.mode === 'direct') return 'direct';
+  if (cfg.mode === 'allproxy') return 'fixed_servers';
+  return 'pac_script';
+}
 
 async function apply(cfg) {
   if (applying) { pendingApply = true; return; }
@@ -806,7 +844,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   await chrome.storage.local.set({ cfg: cfg });
   chrome.alarms.create('zhilu-health', { periodInMinutes: 1 });
   chrome.alarms.create('zhilu-rules', { periodInMinutes: 1440 });  // 规则库每日更新
-  await healthTick();
+  // healthTick 会做端口探测（代理没开时最多两次 2.5s 超时），不能挡在 apply 前面：
+  // 否则装完扩展第一次点图标要干等好几秒。探测结果下一分钟还会再测。
+  healthTick().catch(() => {});
   await apply(cfg);
 });
 
@@ -846,14 +886,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     const cfg = await getCfg();
     switch (msg && msg.type) {
+      // 面板一打开就强制重刷工具栏状态灯：SW 可能是在后台被唤醒的，
+      // 那一刻拿不到活动标签，灯会停在旧值/灰点。
+      case 'refreshBadge':
+        await refreshRouteBadge({ force: true });
+        sendResponse({ ok: true, kind: lastIconKind });
+        break;
       case 'getState': {
-        let actual = 'unknown';
+        let actual = lastActualMode;
         let levelOfControl = 'unknown';
         let readError = '';
         try {
-          const s = await proxyGet();
-          actual = s && s.value ? s.value.mode : 'unknown';
+          // proxy 读取偶尔会卡在 Chrome 代理服务上；面板首屏不能因此被拖住。
+          // 800ms 拿不到就先回上次已知值，下次 getState 再修正。
+          const s = await Promise.race([
+            proxyGet(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('proxy 读取超时')), 800))
+          ]);
+          actual = (s && s.value ? s.value.mode : 'unknown') || 'unknown';
           levelOfControl = s && s.levelOfControl ? s.levelOfControl : 'unknown';
+          if (actual !== 'unknown') lastActualMode = actual;
         } catch (e) {
           readError = String(e && e.message ? e.message : e);
         }
@@ -966,9 +1018,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // async sendResponse
 });
 
-// SW 冷启动兜底
+// SW 冷启动兜底。
+// ⚠️ 代理设置是浏览器持久化的：SW 被回收再唤醒后 chrome.proxy.settings 仍然有效，
+// 不需要每次冷启动都重写。旧版无条件 apply → buildPac 要拼接 + 逐字符转义约 115KB
+// 规则库并写回 proxy，这段同步 CPU 会把 popup 的 getState 挡住，是「点图标半天不出面板」
+// 的主因。现在先比对实际模式，一致就直接返回。
 chrome.alarms.create('zhilu-health', { periodInMinutes: 1 })
   .then(() => applyStoredRules())
-  .then(() => getCfg())
-  .then((c) => apply(c))
+  // 先把状态灯点亮，再比对代理模式：图标绝不能依赖后面的 proxy 读写是否顺利
+  .then(() => { refreshRouteBadge({ force: true }); return getCfg(); })
+  .then(async (c) => {
+    const expected = expectMode(c);
+    const cur = await proxyGet().catch(() => null);
+    const actual = cur && cur.value ? cur.value.mode : 'unknown';
+    // 规则更新走 updateRules 显式 apply，所以这里只需比模式即可
+    if (actual === expected && !lastError) return;   // 灯已在上一步点亮
+    await apply(c);
+  })
   .catch((e) => console.error('[智路] 冷启动失败:', e));

@@ -8,6 +8,12 @@
 
 <p align="center"><img src="cat-lounge.svg" width="120" height="100" alt="智路猫"></p>
 
+## 37 秒看懂智路
+
+<video src="zhilu-demo.mp4" width="100%" controls poster="cat-lounge.svg" style="max-width:900px;border-radius:12px"></video>
+
+<p align="center"><sub>演示：智能分流 / 出口验证 / 工具栏状态点 / 智路猫动效 · 无配音，中文字幕 + 轻音乐</sub></p>
+
 ## 适用场景
 
 如果你在国内用 Chrome，又开了本地代理客户端（Clash / Mihomo / v2rayN / sing-box 等），这个扩展解决一个很具体的问题：**让国内网站直连、国外网站走代理，且不用开代理客户端的「系统代理」开关**。

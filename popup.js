@@ -1,10 +1,98 @@
 /* 智路 · CN 智能分流代理 — popup 控制器 */
 const $ = (id) => document.getElementById(id);
 
+/* 与 background 通信。加超时兜底：后台 service worker 冷启动或正忙时，
+   callback 可能迟迟不来；宁可先拿到 timeout 让首屏保留兜底状态并稍后重试，
+   也不要把整块面板空在那儿等。
+   超时可被 window.__ZL_MSG_TIMEOUT__ 覆盖，供 Node 回归测试用。 */
+const MSG_TIMEOUT = (typeof window !== 'undefined' && window.__ZL_MSG_TIMEOUT__) || 5000;
 function send(type, patch) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type, patch }, (r) => resolve(r || {}));
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: false, timeout: true });
+    }, MSG_TIMEOUT);
+    chrome.runtime.sendMessage({ type, patch }, (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r || {});
+    });
   });
+}
+
+/* ═══ 首屏三层数据源 ═══════════════════════════════════════════════
+   点图标时 service worker 往往正在冷启动（被回收后重新唤醒），
+   等它回消息就意味着白屏几秒。所以拆成三层，任一层拿到数据就出内容：
+     ① localStorage 快照 —— 同步读，0ms，先画上次的真实状态
+     ② storage.local + chrome.proxy.settings —— 本进程直读，约 10ms，
+        绕过 SW 拿真实配置与实际代理模式
+     ③ getState 消息 —— 后台真值，可能几秒，到了再修正
+   ═══════════════════════════════════════════════════════════════ */
+const POPUP_DEFAULTS = Object.freeze({
+  enabled: true, mode: 'smart', proxyHost: '127.0.0.1', proxyPort: 7897,
+  forceDirect: [], forceProxy: [], dnsCheck: true, cnDomainList: true, failOpen: true
+});
+const STATE_CACHE_KEY = 'zl-last-state-v1';
+const STATE_CACHE_TTL = 30 * 60 * 1000;   // 超过 30 分钟的快照不再用于首屏
+
+function readCachedState() {
+  try {
+    const raw = localStorage.getItem(STATE_CACHE_KEY);
+    if (!raw) return null;
+    const box = JSON.parse(raw);
+    if (!box || !box.at || Date.now() - box.at > STATE_CACHE_TTL) return null;
+    const s = box.s;
+    if (!s || !s.cfg || typeof s.cfg.enabled !== 'boolean') return null;
+    return s;
+  } catch (_) { return null; }
+}
+
+let cacheWriteAt = 0;
+function writeCachedState(s) {
+  try {
+    const now = Date.now();
+    if (now - cacheWriteAt < 500) return;   // 节流：动效期间 render 会连调
+    cacheWriteAt = now;
+    localStorage.setItem(STATE_CACHE_KEY, JSON.stringify({ at: now, s }));
+  } catch (_) {}
+}
+
+/* Chrome 实际代理模式：popup 进程内就能读，不必问 service worker */
+function proxySettingsGet() {
+  return new Promise((resolve) => {
+    try {
+      chrome.proxy.settings.get({ incognito: false }, (d) => {
+        try { void chrome.runtime.lastError; } catch (_) {}
+        resolve(d || {});
+      });
+    } catch (_) { resolve({}); }
+  });
+}
+
+/* 本地直读：配置 + 实际模式 + 规则版本，全部绕过 SW */
+async function localState() {
+  let stored = {};
+  try { stored = (await chrome.storage.local.get(['cfg', 'rules'])) || {}; } catch (_) {}
+  const prox = await proxySettingsGet();
+  const cfg = Object.assign({}, POPUP_DEFAULTS, stored.cfg || {});
+  const meta = Object.assign({}, (stored.rules && stored.rules.meta) || {});
+  if (!meta.ageDays && meta.generated && /^\d{4}-\d{2}-\d{2}$/.test(meta.generated)) {
+    const t = Date.parse(meta.generated + 'T00:00:00');
+    if (!isNaN(t)) meta.ageDays = Math.max(0, Math.floor((Date.now() - t) / 86400000));
+  }
+  return {
+    ok: true,
+    cfg: cfg,
+    actual: (prox.value && prox.value.mode) || 'unknown',
+    readable: !!(prox && prox.value),
+    levelOfControl: prox.levelOfControl || 'unknown',
+    offline: false,
+    lastError: '',
+    meta: meta
+  };
 }
 
 let state = null;
@@ -127,6 +215,7 @@ function render(s) {
 
   movePill(true);    // 液态胶囊跟随 active 段；展开详情同步数据
   if (!$('detailLayer').hidden) fillDetail();
+  writeCachedState(s);   // 供下次打开时同步出首屏
 }
 
 function renderChips(elId, list, kind) {
@@ -165,7 +254,9 @@ async function save(patch) {
 
 async function refresh() {
   const s = await send('getState');
-  if (!s.ok) { $('actualMode').textContent = '读取失败'; return null; }
+  // 拿不到就保留 HTML 里的静态骨架，不写死「读取失败」（多半只是后台还在冷启动，
+  // 稍后重试就能恢复；写死错误反而让用户以为坏了）。
+  if (!s.ok) return null;
   render(s);
   return s;
 }
@@ -481,6 +572,17 @@ function fillDetail() {
   const errBox = $('dError');
   if (s.lastError) { errBox.hidden = false; errBox.textContent = '写入错误：' + s.lastError; }
   else errBox.hidden = true;
+
+  // 面板启动耗时：用来区分「窗口出得慢」还是「内容等后台」
+  const dBoot = $('dBoot');
+  if (dBoot) {
+    const b = window.__ZL_BOOT__ || {};
+    const parts = [];
+    if (b.cacheAt === 0) parts.push('快照 0ms');
+    if (b.localAt != null) parts.push('本地 ' + b.localAt + 'ms');
+    parts.push(b.remoteAt != null ? '后台 ' + b.remoteAt + 'ms' : '后台待回');
+    dBoot.textContent = parts.join(' · ');
+  }
 }
 function openDetail() {
   fillDetail();
@@ -770,25 +872,95 @@ $('testBtn').addEventListener('click', async () => {
     : `海外请求失败（${r.error || '超时'}）· 检查 Clash 是否运行、端口是否正确`;
 });
 
-(async function init() {
-  const s = await refresh();
-  if (!s) return;
+/* 拿到首份 state 后的启动流程。 */
+function boot(s) {
   const c = s.cfg;
 
-  // 开机自愈：实际模式与配置不符、或后台报错/离线 → 自动重写一次
+  // 开机自愈：实际模式与配置不符、或后台报错/离线 → 后台静默重写一次。
+  // 不 await：自愈要走 retry + refresh + checkProxy 三次往返，卡在首屏不值当。
   const expected = !c.enabled ? null
     : (c.mode === 'direct' ? 'direct' : (c.mode === 'allproxy' ? 'fixed_servers' : 'pac_script'));
   const mismatch = c.enabled && s.actual !== expected && s.actual !== 'unknown';
   if ((c.enabled && s.offline) || mismatch || s.lastError) {
-    await retryNow();
+    retryNow().catch(() => {});
   } else {
-    await checkProxy();
+    checkProxy();
   }
   loadRoute();    // 当前页面路由判定：落到健康卡的直连/代理示意条 + logo 灯
   loadTraffic();  // 流量统计：直连 / 代理分路累计
   loadIpInfo();   // 出口探测独立于健康状态，异步进行不阻塞面板
   loadKernel();   // 内核检测同上
   Mascot.start(); // 吉祥物跨卡片斜跳巡游
-  initSpotlights(); // 聚光卡片鼠标跟随
-  initDock();       // 玻璃停靠栏联动
+}
+
+/* 首帧兜底：后台还没回应时，状态灯先给「判定中」的琥珀色。
+   HTML 里的默认灰点在浅色/16px 下几乎看不见，容易被当成「状态灯没了」；
+   chip 也不能停在静态的绿色「运行中」——那是还没验证过的乐观值。 */
+function paintPending() {
+  const dot = $('logoRouteDot');
+  if (dot) { dot.className = 'logo-route-dot is-warn'; dot.title = '正在判定当前页面路由…'; }
+  const chip = $('statusChip');
+  if (chip) { chip.className = 'chip chip-warn'; chip.textContent = '读取中'; }
+  const sub = $('healthSub');
+  if (sub) sub.textContent = '正在读取扩展后台状态…';
+}
+
+/* 后台冷启动没赶上：按 1.2s / 3s 退避重试；仍失败就明确报「后台无响应」，
+   不留一块看起来正常、其实是静态占位的面板。 */
+async function bootWithRetry() {
+  for (const wait of [800, 2200]) {
+    await new Promise((r) => setTimeout(r, wait));
+    const r = await refresh();
+    if (r) { boot(r); return; }
+  }
+  const chip = $('statusChip');
+  if (chip) { chip.className = 'chip chip-err'; chip.textContent = '后台无响应'; }
+  const sub = $('healthSub');
+  if (sub) sub.textContent = '扩展后台未响应 · 点右侧 › 诊断重试，或到扩展页重新加载';
+}
+
+let booted = false;
+function bootOnce(s) { if (booted) return; booted = true; boot(s); }
+
+window.__ZL_BOOT__ = { t0: performance.now() };
+
+(async function init() {
+  const t0 = performance.now();
+
+  // 不依赖后台的部分先起来：面板一打开就能点、能滚、有聚光
+  initSpotlights();
+  initDock();
+  paintPending();       // 状态灯先亮（琥珀=判定中），不留看不见的灰点
+  send('refreshBadge'); // 让工具栏图标按当前标签强制重刷一次
+
+  // ① 同步快照：0ms 先有完整内容（只画，不触发后台动作）
+  const cached = readCachedState();
+  if (cached) { render(cached); window.__ZL_BOOT__.cacheAt = 0; }
+
+  // ② 本地直读：真实配置 + Chrome 实际代理模式，不经过 SW
+  let local = null;
+  try { local = await localState(); } catch (_) { local = null; }
+  if (local && local.readable) {
+    render(local);
+    window.__ZL_BOOT__.localAt = Math.round(performance.now() - t0);
+    bootOnce(local);    // 动作类（自愈/流量/IP/内核）从这一刻开始，仍不等 SW 回话
+  }
+
+  // ③ 后台真值：到了就修正（可能几秒，取决于 SW 冷启动）
+  const s = await refresh();
+  if (s) {
+    window.__ZL_BOOT__.remoteAt = Math.round(performance.now() - t0);
+    bootOnce(s);
+  } else if (local && local.readable) {
+    // 本地已出真实状态，只是后台没回：保留主体，补一句提示（不假装一切正常）
+    const sub = $('healthSub');
+    if (sub && !/后台未响应/.test(sub.textContent || '')) {
+      sub.textContent = (sub.textContent || '') + ' · 后台未响应，正在重试';
+    }
+  } else {
+    bootWithRetry();
+  }
+  if (window.console && console.debug) {
+    console.debug('[智路] 首屏', JSON.stringify(window.__ZL_BOOT__));
+  }
 })();

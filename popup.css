@@ -133,7 +133,7 @@ body {
 }
 /* logo 右上角极小状态灯：直连=绿、走代理=紫、无法判定=灰/琥珀（盖在猫耳旁，不挡脸） */
 .logo-route-dot {
-  position: absolute; top: 3px; right: 3px; z-index: 2;
+  position: absolute; top: 3px; right: 3px; z-index: 12;   /* 必须压过 .spot-glow(z8)，否则 hover 被光斑糊住 */
   width: 9px; height: 9px; border-radius: 50%;
   border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(15, 23, 42, .25);
   transition: background .3s, box-shadow .3s;
